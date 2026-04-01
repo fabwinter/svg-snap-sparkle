@@ -45,7 +45,11 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
 
       cancelled = false;
       const { imageBuffer, width, height, mask, cleanup, trace } = msg.payload;
-      const rgba = new Uint8ClampedArray(imageBuffer);
+      // Ensure a clean typed array with byteOffset === 0
+      const rawView = new Uint8ClampedArray(imageBuffer);
+      const rgba = rawView.byteOffset === 0 && rawView.byteLength === rawView.buffer.byteLength
+        ? rawView
+        : new Uint8ClampedArray(rawView.slice());
 
       try {
         const svgString = await runPipeline(rgba, width, height, mask, cleanup, trace, {

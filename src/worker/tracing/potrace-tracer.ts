@@ -121,8 +121,7 @@ export class PotraceTracer implements ITracer {
   ): Promise<string> {
     const mod = potraceModule;
     const whiteComposite = compositeOnWhite(data, width, height);
-    // Create a fresh copy to avoid any byteOffset issues
-    const pixels = new Uint8ClampedArray(whiteComposite.length);
+    const pixels = new Uint8ClampedArray(width * height * 4);
     pixels.set(whiteComposite);
     const imageData = new ImageData(pixels, width, height);
 
