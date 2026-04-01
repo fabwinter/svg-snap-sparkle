@@ -1,27 +1,143 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
-import NotFound from "./pages/NotFound.tsx";
+import { useCallback, useRef, useState } from 'react';
+import ImageImport from '@/components/ImageImport';
+import SettingsPanel from '@/components/SettingsPanel';
+import ProcessingState from '@/components/ProcessingState';
+import PreviewCanvas from '@/components/PreviewCanvas';
+import ActionBar from '@/components/ActionBar';
+import { WorkerClient } from '@/services/worker-client';
+import { PresetType, PRESETS, buildTraceConfig, buildMaskConfig } from '@/types/preset';
+import { DEFAULT_CLEANUP } from '@/types/pipeline';
+import { Sparkles } from 'lucide-react';
 
-const queryClient = new QueryClient();
+type AppStep = 'import' | 'settings' | 'processing' | 'preview';
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+export default function App() {
+  const workerClient = useRef(new WorkerClient());
 
-export default App;
+  const [step, setStep] = useState<AppStep>('import');
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [imageData, setImageData] = useState<ImageData | null>(null);
+  const [preset, setPreset] = useState<PresetType>('logo');
+  const [colorCount, setColorCount] = useState(2);
+  const [removeBg, setRemoveBg] = useState(true);
+  const [svgString, setSvgString] = useState<string | null>(null);
+  const [svgWidth, setSvgWidth] = useState(0);
+  const [svgHeight, setSvgHeight] = useState(0);
+  const [progressStage, setProgressStage] = useState('');
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleImageLoaded = useCallback((file: File, data: ImageData) => {
+    setSourceFile(file);
+    setImageData(data);
+    setStep('settings');
+  }, []);
+
+  const handlePresetChange = useCallback((p: PresetType) => {
+    setPreset(p);
+    setColorCount(PRESETS[p].colorCount);
+    setRemoveBg(PRESETS[p].removeBg);
+  }, []);
+
+  const handleConvert = useCallback(async () => {
+    if (!imageData) return;
+    setStep('processing');
+    setError(null);
+    setProgressStage('Analysing...');
+    setProgressPercent(0);
+
+    try {
+      const traceConfig = buildTraceConfig(preset, colorCount);
+      const maskConfig = buildMaskConfig(removeBg);
+      const result = await workerClient.current.process(
+        imageData, maskConfig, DEFAULT_CLEANUP, traceConfig,
+        { onProgress: (stage, percent) => { setProgressStage(stage); setProgressPercent(percent); } }
+      );
+      setSvgString(result);
+      setSvgWidth(imageData.width);
+      setSvgHeight(imageData.height);
+      setStep('preview');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  }, [imageData, preset, colorCount, removeBg]);
+
+  const handleRerun = useCallback(() => {
+    setSvgString(null);
+    setStep('settings');
+  }, []);
+
+  const handleReset = useCallback(() => {
+    setSourceFile(null);
+    setImageData(null);
+    setSvgString(null);
+    setStep('import');
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-[720px] mx-auto px-4 py-8 space-y-6">
+        {/* Header */}
+        <header className="text-center space-y-1 pb-2">
+          <h1 className="text-lg font-bold text-foreground flex items-center justify-center gap-2">
+            <Sparkles className="w-5 h-5 text-primary" />
+            SVGmagic Lite
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            Convert raster images to clean SVG vectors
+          </p>
+        </header>
+
+        {/* Step: Import (always visible so user can see loaded image) */}
+        <ImageImport
+          onImageLoaded={handleImageLoaded}
+          sourceFile={sourceFile}
+          imageData={imageData}
+          onReset={handleReset}
+        />
+
+        {/* Step: Settings */}
+        {(step === 'settings' || step === 'processing' || step === 'preview') && (
+          <SettingsPanel
+            preset={preset}
+            colorCount={colorCount}
+            removeBg={removeBg}
+            hasImage={!!imageData}
+            onPresetChange={handlePresetChange}
+            onColorCountChange={setColorCount}
+            onRemoveBgChange={setRemoveBg}
+            onConvert={handleConvert}
+          />
+        )}
+
+        {/* Step: Processing */}
+        {step === 'processing' && (
+          <ProcessingState
+            stage={progressStage}
+            percent={progressPercent}
+            error={error}
+            onRetry={handleConvert}
+          />
+        )}
+
+        {/* Step: Preview + Actions */}
+        {step === 'preview' && svgString && sourceFile && (
+          <>
+            <PreviewCanvas
+              originalFile={sourceFile}
+              svgString={svgString}
+              svgWidth={svgWidth}
+              svgHeight={svgHeight}
+            />
+            <ActionBar
+              svgString={svgString}
+              originalFilename={sourceFile.name}
+              onRerun={handleRerun}
+              onNewImage={handleReset}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
