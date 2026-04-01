@@ -150,7 +150,7 @@ export async function traceImage(
   callbacks: { onProgress: (stage: string, percent: number) => void }
 ): Promise<string> {
   const { width: w, height: h } = imageData;
-  let pixels = new Uint8ClampedArray(imageData.data);
+  let pixels = new Uint8ClampedArray(imageData.data) as Uint8ClampedArray<ArrayBuffer>;
 
   callbacks.onProgress('Analysing...', 10);
   await sleep(100);
