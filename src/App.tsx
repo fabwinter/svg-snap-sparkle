@@ -5,9 +5,10 @@ import ProcessingState from '@/components/ProcessingState';
 import PreviewCanvas from '@/components/PreviewCanvas';
 import ActionBar from '@/components/ActionBar';
 import { WorkerClient } from '@/services/worker-client';
-import { PresetType, PRESETS, buildTraceConfig, buildMaskConfig } from '@/types/preset';
+import { PresetType, PRESETS, buildTraceConfig, buildMaskConfig, getDefaultAdvanced } from '@/types/preset';
 import { DEFAULT_CLEANUP } from '@/types/pipeline';
 import { Sparkles } from 'lucide-react';
+import type { AdvancedSettings } from '@/components/SettingsPanel';
 
 type AppStep = 'import' | 'settings' | 'processing' | 'preview';
 
