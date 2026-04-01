@@ -10,7 +10,7 @@ export interface PresetDefaults {
 }
 
 export const PRESETS: Record<PresetType, PresetDefaults> = {
-  logo: { label: 'Logo', colorCount: 2, traceMode: 'outline', removeBg: true },
+  logo: { label: 'Logo', colorCount: 4, traceMode: 'color', removeBg: true },
   clipart: { label: 'Clipart', colorCount: 4, traceMode: 'color', removeBg: true },
   illustration: { label: 'Illustration', colorCount: 8, traceMode: 'color', removeBg: false },
   photo: { label: 'Photo', colorCount: 16, traceMode: 'color', removeBg: false },
