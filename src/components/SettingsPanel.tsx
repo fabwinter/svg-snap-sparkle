@@ -1,25 +1,90 @@
 import { PRESETS, PresetType } from '@/types/preset';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowRight } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ArrowRight, Settings2, ChevronDown } from 'lucide-react';
+import { useState } from 'react';
+
+export interface AdvancedSettings {
+  turdSize: number;
+  alphaMax: number;
+  optTolerance: number;
+  filterSpeckle: number;
+  pathOverlap: number;
+}
 
 interface SettingsPanelProps {
   preset: PresetType;
   colorCount: number;
   removeBg: boolean;
   hasImage: boolean;
+  advanced: AdvancedSettings;
   onPresetChange: (p: PresetType) => void;
   onColorCountChange: (n: number) => void;
   onRemoveBgChange: (v: boolean) => void;
+  onAdvancedChange: (a: AdvancedSettings) => void;
   onConvert: () => void;
 }
 
 const presetKeys: PresetType[] = ['logo', 'clipart', 'illustration', 'photo'];
 
+const ADVANCED_FIELDS: {
+  key: keyof AdvancedSettings;
+  label: string;
+  description: string;
+  min: number;
+  max: number;
+  step: number;
+  presets?: PresetType[]; // only show for these presets; undefined = all
+}[] = [
+  {
+    key: 'turdSize',
+    label: 'Noise suppression',
+    description: 'Ignore areas smaller than this (px²)',
+    min: 0, max: 20, step: 1,
+  },
+  {
+    key: 'optTolerance',
+    label: 'Curve tolerance',
+    description: 'Higher = smoother curves, less detail',
+    min: 0, max: 1, step: 0.05,
+  },
+  {
+    key: 'alphaMax',
+    label: 'Corner threshold',
+    description: 'Controls sharpness of corners',
+    min: 0, max: 1.4, step: 0.1,
+  },
+  {
+    key: 'filterSpeckle',
+    label: 'Speckle filter',
+    description: 'Remove small disconnected shapes',
+    min: 0, max: 20, step: 1,
+    presets: ['clipart', 'illustration', 'photo'],
+  },
+  {
+    key: 'pathOverlap',
+    label: 'Path overlap',
+    description: 'Dilation passes to eliminate seams between layers',
+    min: 0, max: 8, step: 1,
+    presets: ['logo', 'clipart', 'illustration', 'photo'],
+  },
+];
+
 export default function SettingsPanel({
-  preset, colorCount, removeBg, hasImage,
-  onPresetChange, onColorCountChange, onRemoveBgChange, onConvert,
+  preset, colorCount, removeBg, hasImage, advanced,
+  onPresetChange, onColorCountChange, onRemoveBgChange, onAdvancedChange, onConvert,
 }: SettingsPanelProps) {
+  const [open, setOpen] = useState(false);
+
+  const visibleFields = ADVANCED_FIELDS.filter(
+    (f) => !f.presets || f.presets.includes(preset)
+  );
+
+  const updateField = (key: keyof AdvancedSettings, value: number) => {
+    onAdvancedChange({ ...advanced, [key]: value });
+  };
+
   return (
     <div className="bg-card rounded-xl border border-border p-6 space-y-6">
       {/* Preset pills */}
@@ -74,6 +139,37 @@ export default function SettingsPanel({
           Remove background before vectorising
         </span>
       </label>
+
+      {/* Advanced settings */}
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full">
+          <Settings2 className="w-3.5 h-3.5" />
+          Advanced settings
+          <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-4 space-y-4">
+          {visibleFields.map((field) => (
+            <div key={field.key}>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  {field.label}
+                </label>
+                <span className="text-xs font-medium bg-secondary text-muted-foreground px-2 py-0.5 rounded-full">
+                  {field.step < 1 ? advanced[field.key].toFixed(2) : advanced[field.key]}
+                </span>
+              </div>
+              <Slider
+                min={field.min}
+                max={field.max}
+                step={field.step}
+                value={[advanced[field.key]]}
+                onValueChange={([v]) => updateField(field.key, v)}
+              />
+              <p className="text-[10px] text-muted-foreground/60 mt-1">{field.description}</p>
+            </div>
+          ))}
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Convert button */}
       <button

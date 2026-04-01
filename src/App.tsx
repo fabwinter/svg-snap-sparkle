@@ -5,9 +5,10 @@ import ProcessingState from '@/components/ProcessingState';
 import PreviewCanvas from '@/components/PreviewCanvas';
 import ActionBar from '@/components/ActionBar';
 import { WorkerClient } from '@/services/worker-client';
-import { PresetType, PRESETS, buildTraceConfig, buildMaskConfig } from '@/types/preset';
+import { PresetType, PRESETS, buildTraceConfig, buildMaskConfig, getDefaultAdvanced } from '@/types/preset';
 import { DEFAULT_CLEANUP } from '@/types/pipeline';
 import { Sparkles } from 'lucide-react';
+import type { AdvancedSettings } from '@/components/SettingsPanel';
 
 type AppStep = 'import' | 'settings' | 'processing' | 'preview';
 
@@ -20,6 +21,7 @@ export default function App() {
   const [preset, setPreset] = useState<PresetType>('logo');
   const [colorCount, setColorCount] = useState(2);
   const [removeBg, setRemoveBg] = useState(true);
+  const [advanced, setAdvanced] = useState<AdvancedSettings>(() => getDefaultAdvanced('logo'));
   const [svgString, setSvgString] = useState<string | null>(null);
   const [svgWidth, setSvgWidth] = useState(0);
   const [svgHeight, setSvgHeight] = useState(0);
@@ -37,6 +39,7 @@ export default function App() {
     setPreset(p);
     setColorCount(PRESETS[p].colorCount);
     setRemoveBg(PRESETS[p].removeBg);
+    setAdvanced(getDefaultAdvanced(p));
   }, []);
 
   const handleConvert = useCallback(async () => {
@@ -47,7 +50,7 @@ export default function App() {
     setProgressPercent(0);
 
     try {
-      const traceConfig = buildTraceConfig(preset, colorCount);
+      const traceConfig = buildTraceConfig(preset, colorCount, advanced);
       const maskConfig = buildMaskConfig(removeBg);
       const result = await workerClient.current.process(
         imageData, maskConfig, DEFAULT_CLEANUP, traceConfig,
@@ -60,7 +63,7 @@ export default function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     }
-  }, [imageData, preset, colorCount, removeBg]);
+  }, [imageData, preset, colorCount, removeBg, advanced]);
 
   const handleRerun = useCallback(() => {
     setSvgString(null);
@@ -103,9 +106,11 @@ export default function App() {
             colorCount={colorCount}
             removeBg={removeBg}
             hasImage={!!imageData}
+            advanced={advanced}
             onPresetChange={handlePresetChange}
             onColorCountChange={setColorCount}
             onRemoveBgChange={setRemoveBg}
+            onAdvancedChange={setAdvanced}
             onConvert={handleConvert}
           />
         )}
