@@ -53,9 +53,9 @@ export default function App() {
         imageData, maskConfig, DEFAULT_CLEANUP, traceConfig,
         { onProgress: (stage, percent) => { setProgressStage(stage); setProgressPercent(percent); } }
       );
-      setSvgString(result);
-      setSvgWidth(imageData.width);
-      setSvgHeight(imageData.height);
+      setSvgString(result.svgString);
+      setSvgWidth(result.width);
+      setSvgHeight(result.height);
       setStep('preview');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
