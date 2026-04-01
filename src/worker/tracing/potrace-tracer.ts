@@ -9,6 +9,7 @@ import type { TraceConfig } from '../../types/pipeline';
 import type { ITracer } from './tracer';
 import type { WorkerImageData } from '../image-utils';
 import { compositeOnWhite } from '../image-utils';
+import { createSafeImageData } from '../safe-image-data';
 import { extractColorLayers } from './color-quantize';
 import { extractSvgPaths } from './svg-builder';
 
