@@ -42,9 +42,7 @@ async function traceMask(
     pixels[off + 3] = 255;
   }
 
-  const safePx = pixels.byteOffset === 0 && pixels.byteLength === pixels.buffer.byteLength
-    ? pixels : new Uint8ClampedArray(pixels.slice());
-  const imageData = new ImageData(safePx, w, h);
+  const imageData = createSafeImageData(pixels, w, h);
 
   const svg: string = await mod.potrace(imageData, {
     turdsize: config.turdSize ?? 2,
