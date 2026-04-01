@@ -16,25 +16,41 @@ export const PRESETS: Record<PresetType, PresetDefaults> = {
   photo: { label: 'Photo', colorCount: 16, traceMode: 'color', removeBg: false },
 };
 
-export function buildTraceConfig(preset: PresetType, colorCount: number): TraceConfig {
-  switch (preset) {
-    case 'logo':
-      return {
-        mode: 'color', turdSize: 2, alphaMax: 1.0, optTolerance: 0.1,
-        colorPrecision: colorCount, pathOverlap: 2, filterSpeckle: 4,
-      };
-    case 'clipart':
-    case 'illustration':
-      return {
-        mode: 'color', turdSize: 4, alphaMax: 1.0, optTolerance: 0.2,
-        colorPrecision: colorCount, pathOverlap: 4, filterSpeckle: 0,
-      };
-    case 'photo':
-      return {
-        mode: 'color', colorPrecision: colorCount,
-        filterSpeckle: 4, pathOverlap: 0, optTolerance: 0.2, turdSize: 2, alphaMax: 1.0,
-      };
-  }
+export interface AdvancedDefaults {
+  turdSize: number;
+  alphaMax: number;
+  optTolerance: number;
+  filterSpeckle: number;
+  pathOverlap: number;
+}
+
+const ADVANCED_DEFAULTS: Record<PresetType, AdvancedDefaults> = {
+  logo:         { turdSize: 2, alphaMax: 1.0, optTolerance: 0.1, filterSpeckle: 4, pathOverlap: 2 },
+  clipart:      { turdSize: 4, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 0, pathOverlap: 4 },
+  illustration: { turdSize: 4, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 0, pathOverlap: 4 },
+  photo:        { turdSize: 2, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 4, pathOverlap: 0 },
+};
+
+export function getDefaultAdvanced(preset: PresetType): AdvancedDefaults {
+  return { ...ADVANCED_DEFAULTS[preset] };
+}
+
+export function buildTraceConfig(
+  preset: PresetType,
+  colorCount: number,
+  overrides?: Partial<AdvancedDefaults>,
+): TraceConfig {
+  const defaults = ADVANCED_DEFAULTS[preset];
+  const adv = { ...defaults, ...overrides };
+  return {
+    mode: 'color',
+    colorPrecision: colorCount,
+    turdSize: adv.turdSize,
+    alphaMax: adv.alphaMax,
+    optTolerance: adv.optTolerance,
+    filterSpeckle: adv.filterSpeckle,
+    pathOverlap: adv.pathOverlap,
+  };
 }
 
 export function buildMaskConfig(removeBg: boolean): MaskConfig {

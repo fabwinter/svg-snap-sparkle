@@ -106,9 +106,11 @@ export default function App() {
             colorCount={colorCount}
             removeBg={removeBg}
             hasImage={!!imageData}
+            advanced={advanced}
             onPresetChange={handlePresetChange}
             onColorCountChange={setColorCount}
             onRemoveBgChange={setRemoveBg}
+            onAdvancedChange={setAdvanced}
             onConvert={handleConvert}
           />
         )}
