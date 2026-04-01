@@ -24,7 +24,7 @@ export default function PreviewCanvas({ originalFile, svgString, svgWidth, svgHe
   const sizeKB = Math.round(svgString.length / 1024);
 
   const handlePointerDown = useCallback(() => { dragging.current = true; }, []);
-  const handlePointerUp = useCallback(() => { dragging.current = false; }, []);
+  const _handlePointerUp = useCallback(() => { dragging.current = false; }, []);
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging.current || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
