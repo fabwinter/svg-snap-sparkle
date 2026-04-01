@@ -23,7 +23,7 @@ const MIN_DIMENSION = 512;
 
 /** Maximum dimension for tracing. esm-potrace-wasm uses stackAlloc for pixel
  *  data, so large images overflow the WASM stack. Cap to keep safe. */
-const MAX_TRACE_DIMENSION = 800;
+const MAX_TRACE_DIMENSION = 1200;
 
 export interface DispatcherCallbacks {
   onProgress(stage: string, percent: number): void;

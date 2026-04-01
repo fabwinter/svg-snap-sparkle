@@ -10,7 +10,7 @@ export interface PresetDefaults {
 }
 
 export const PRESETS: Record<PresetType, PresetDefaults> = {
-  logo: { label: 'Logo', colorCount: 2, traceMode: 'outline', removeBg: true },
+  logo: { label: 'Logo', colorCount: 4, traceMode: 'color', removeBg: true },
   clipart: { label: 'Clipart', colorCount: 4, traceMode: 'color', removeBg: true },
   illustration: { label: 'Illustration', colorCount: 8, traceMode: 'color', removeBg: false },
   photo: { label: 'Photo', colorCount: 16, traceMode: 'color', removeBg: false },
@@ -20,8 +20,8 @@ export function buildTraceConfig(preset: PresetType, colorCount: number): TraceC
   switch (preset) {
     case 'logo':
       return {
-        mode: 'outline', turdSize: 2, alphaMax: 1.0, optTolerance: 0.1,
-        colorPrecision: colorCount, pathOverlap: 0, filterSpeckle: 0, bwThreshold: 128,
+        mode: 'color', turdSize: 2, alphaMax: 1.0, optTolerance: 0.1,
+        colorPrecision: colorCount, pathOverlap: 2, filterSpeckle: 4,
       };
     case 'clipart':
     case 'illustration':
