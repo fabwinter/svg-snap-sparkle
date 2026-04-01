@@ -41,7 +41,9 @@ async function traceMask(
     pixels[off + 3] = 255;
   }
 
-  const imageData = new ImageData(pixels, w, h);
+  const safePx = pixels.byteOffset === 0 && pixels.byteLength === pixels.buffer.byteLength
+    ? pixels : new Uint8ClampedArray(pixels.slice());
+  const imageData = new ImageData(safePx, w, h);
 
   const svg: string = await mod.potrace(imageData, {
     turdsize: config.turdSize ?? 2,
@@ -119,8 +121,7 @@ export class PotraceTracer implements ITracer {
   ): Promise<string> {
     const mod = potraceModule;
     const whiteComposite = compositeOnWhite(data, width, height);
-    // Create a fresh copy to avoid any byteOffset issues
-    const pixels = new Uint8ClampedArray(whiteComposite.length);
+    const pixels = new Uint8ClampedArray(width * height * 4);
     pixels.set(whiteComposite);
     const imageData = new ImageData(pixels, width, height);
 
