@@ -9,7 +9,6 @@ import type { TraceConfig } from '../../types/pipeline';
 import type { ITracer } from './tracer';
 import type { WorkerImageData } from '../image-utils';
 import { compositeOnWhite } from '../image-utils';
-import { createSafeImageData } from '../safe-image-data';
 import { extractColorLayers } from './color-quantize';
 import { extractSvgPaths } from './svg-builder';
 
@@ -22,6 +21,20 @@ export async function initPotrace(): Promise<void> {
   await potraceModule.init();
 }
 
+/**
+ * Create a plain object with the same shape as ImageData.
+ * esm-potrace-wasm only reads .data, .width, .height — it doesn't
+ * check instanceof ImageData. Using a plain object avoids the native
+ * ImageData constructor which can cause "Offset should not be negative"
+ * errors when the WASM module's memory grows and invalidates typed array views.
+ */
+function makeFakeImageData(pixels: Uint8ClampedArray, w: number, h: number) {
+  // Always create a fresh copy so the buffer is never shared
+  const copy = new Uint8ClampedArray(w * h * 4);
+  copy.set(pixels);
+  return { data: copy, width: w, height: h };
+}
+
 /** Trace a single binary mask (255=foreground) with Potrace. Returns raw SVG. */
 async function traceMask(
   mask: Uint8Array,
@@ -30,6 +43,13 @@ async function traceMask(
   config: TraceConfig,
 ): Promise<string> {
   const mod = potraceModule;
+
+  // Skip empty masks — no foreground pixels to trace
+  let hasForeground = false;
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i] === 255) { hasForeground = true; break; }
+  }
+  if (!hasForeground) return '';
 
   // Convert binary mask to RGBA: foreground=black, background=white
   const pixels = new Uint8ClampedArray(w * h * 4);
@@ -42,7 +62,7 @@ async function traceMask(
     pixels[off + 3] = 255;
   }
 
-  const imageData = createSafeImageData(pixels, w, h);
+  const imageData = makeFakeImageData(pixels, w, h);
 
   const svg: string = await mod.potrace(imageData, {
     turdsize: config.turdSize ?? 2,
@@ -105,6 +125,11 @@ export class PotraceTracer implements ITracer {
 
     const { data, width, height } = image;
 
+    // Validate input
+    if (width <= 0 || height <= 0 || data.length !== width * height * 4) {
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"></svg>`;
+    }
+
     if (config.mode !== 'color') {
       return this.traceOutline(data, width, height, config);
     }
@@ -120,9 +145,7 @@ export class PotraceTracer implements ITracer {
   ): Promise<string> {
     const mod = potraceModule;
     const whiteComposite = compositeOnWhite(data, width, height);
-    const pixels = new Uint8ClampedArray(width * height * 4);
-    pixels.set(whiteComposite);
-    const imageData = createSafeImageData(pixels, width, height);
+    const imageData = makeFakeImageData(whiteComposite, width, height);
 
     return mod.potrace(imageData, {
       turdsize: config.turdSize ?? 2,
@@ -187,6 +210,7 @@ export class PotraceTracer implements ITracer {
       const si = li - firstTracedLayer;
 
       const svg = await traceMask(stackedMasks[si], width, height, config);
+      if (!svg) continue;
       const paths = extractSvgPaths(svg);
       if (!paths.trim()) continue;
 

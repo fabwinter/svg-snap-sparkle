@@ -18,8 +18,8 @@ import { applyMaskToRgba, maskToRgba, compositeOnWhite } from './image-utils';
 import { PotraceTracer, initPotrace } from './tracing/potrace-tracer';
 import { stripBackgroundRect } from './tracing/svg-builder';
 
-/** Minimum dimension for tracing. Images smaller than this get upscaled. */
-const MIN_DIMENSION = 2048;
+/** Minimum dimension for tracing. Keep moderate to avoid WASM memory issues. */
+const MIN_DIMENSION = 1024;
 
 export interface DispatcherCallbacks {
   onProgress(stage: string, percent: number): void;
