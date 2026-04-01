@@ -122,7 +122,7 @@ export class PotraceTracer implements ITracer {
     const whiteComposite = compositeOnWhite(data, width, height);
     const pixels = new Uint8ClampedArray(width * height * 4);
     pixels.set(whiteComposite);
-    const imageData = new ImageData(pixels, width, height);
+    const imageData = createSafeImageData(pixels, width, height);
 
     return mod.potrace(imageData, {
       turdsize: config.turdSize ?? 2,
