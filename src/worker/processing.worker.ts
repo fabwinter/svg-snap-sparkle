@@ -52,18 +52,23 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
         : new Uint8ClampedArray(rawView.slice());
 
       try {
+        console.log('[worker] Starting pipeline, image:', width, 'x', height, 'buffer len:', rgba.length, 'byteOffset:', rgba.byteOffset);
         const svgString = await runPipeline(rgba, width, height, mask, cleanup, trace, {
           onProgress(stage, percent) {
             if (cancelled) throw new Error('Cancelled');
+            console.log('[worker] Progress:', stage, percent);
             post({ type: 'progress', stage, percent });
           },
         });
 
+        console.log('[worker] Pipeline complete, SVG length:', svgString?.length);
         if (!cancelled) {
           post({ type: 'result', svgString, width, height });
         }
       } catch (err) {
         const message = (err as Error).message;
+        const stack = (err as Error).stack;
+        console.error('[worker] Pipeline error:', message, stack);
         if (message !== 'Cancelled') {
           post({ type: 'error', message });
         }
