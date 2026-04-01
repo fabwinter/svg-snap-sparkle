@@ -150,7 +150,8 @@ export async function traceImage(
   callbacks: { onProgress: (stage: string, percent: number) => void }
 ): Promise<string> {
   const { width: w, height: h } = imageData;
-  let pixels = new Uint8ClampedArray(imageData.data.buffer.slice(0));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pixels: any = new Uint8ClampedArray(imageData.data.buffer.slice(0));
 
   callbacks.onProgress('Analysing...', 10);
   await sleep(100);
