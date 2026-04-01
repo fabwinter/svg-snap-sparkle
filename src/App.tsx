@@ -50,7 +50,7 @@ export default function App() {
     setProgressPercent(0);
 
     try {
-      const traceConfig = buildTraceConfig(preset, colorCount);
+      const traceConfig = buildTraceConfig(preset, colorCount, advanced);
       const maskConfig = buildMaskConfig(removeBg);
       const result = await workerClient.current.process(
         imageData, maskConfig, DEFAULT_CLEANUP, traceConfig,
