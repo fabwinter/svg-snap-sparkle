@@ -31,17 +31,17 @@ async function traceMask(
   const mod = potraceModule;
 
   // Convert binary mask to RGBA: foreground=black, background=white
-  const rgba = new Uint8ClampedArray(w * h * 4);
+  const pixels = new Uint8ClampedArray(w * h * 4);
   for (let i = 0; i < w * h; i++) {
     const off = i * 4;
     const val = mask[i] === 255 ? 0 : 255;
-    rgba[off] = val;
-    rgba[off + 1] = val;
-    rgba[off + 2] = val;
-    rgba[off + 3] = 255;
+    pixels[off] = val;
+    pixels[off + 1] = val;
+    pixels[off + 2] = val;
+    pixels[off + 3] = 255;
   }
 
-  const imageData = new ImageData(rgba, w, h);
+  const imageData = new ImageData(pixels, w, h);
 
   const svg: string = await mod.potrace(imageData, {
     turdsize: config.turdSize ?? 2,
