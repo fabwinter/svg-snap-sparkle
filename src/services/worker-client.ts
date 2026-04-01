@@ -77,8 +77,9 @@ export class WorkerClient {
 
       this.worker.addEventListener('message', handler);
 
-      // Transfer the pixel buffer (zero-copy)
-      const buffer = (imageData.data.buffer as ArrayBuffer).slice(0);
+      // Transfer the pixel buffer (zero-copy) — handle potential byteOffset
+      const srcData = imageData.data;
+      const buffer = srcData.buffer.slice(srcData.byteOffset, srcData.byteOffset + srcData.byteLength);
       const payload: WorkerProcessPayload = {
         imageBuffer: buffer,
         width: imageData.width,
