@@ -70,7 +70,7 @@ function removeBackground(
 // --- Contour tracing (marching squares simplified) ---
 function createLayerMask(
   data: Uint8ClampedArray, w: number, h: number,
-  colorIdx: number, palette: RGB[], turdSize: number
+  colorIdx: number, palette: RGB[], _turdSize: number
 ): boolean[][] {
   const mask: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
   for (let y = 0; y < h; y++) {
