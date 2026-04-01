@@ -119,12 +119,24 @@ export async function runPipeline(
   const origW = w;
   const origH = h;
 
-  // ── Step 0: Upscale if needed ─────────────────────────────────
-  const maxDim = Math.max(w, h);
+  // ── Step 0: Resize if needed ──────────────────────────────────
+  let maxDim = Math.max(w, h);
 
   if (maxDim < MIN_DIMENSION) {
     callbacks.onProgress('Upscaling image', 2);
     const scale = MIN_DIMENSION / maxDim;
+    const newW = Math.round(w * scale);
+    const newH = Math.round(h * scale);
+    rgba = upscaleRgba(rgba, w, h, newW, newH);
+    w = newW;
+    h = newH;
+    maxDim = Math.max(w, h);
+  }
+
+  // Downscale large images to avoid WASM stack overflow in Potrace
+  if (maxDim > MAX_TRACE_DIMENSION) {
+    callbacks.onProgress('Downscaling for trace', 3);
+    const scale = MAX_TRACE_DIMENSION / maxDim;
     const newW = Math.round(w * scale);
     const newH = Math.round(h * scale);
     rgba = upscaleRgba(rgba, w, h, newW, newH);
