@@ -20,8 +20,8 @@ export function buildTraceConfig(preset: PresetType, colorCount: number): TraceC
   switch (preset) {
     case 'logo':
       return {
-        mode: 'outline', turdSize: 2, alphaMax: 1.0, optTolerance: 0.1,
-        colorPrecision: colorCount, pathOverlap: 0, filterSpeckle: 0, bwThreshold: 128,
+        mode: 'color', turdSize: 2, alphaMax: 1.0, optTolerance: 0.1,
+        colorPrecision: colorCount, pathOverlap: 2, filterSpeckle: 4,
       };
     case 'clipart':
     case 'illustration':

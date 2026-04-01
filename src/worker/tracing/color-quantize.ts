@@ -159,7 +159,7 @@ export function extractColorLayers(
     }));
 
   // Merge perceptually close clusters
-  const MERGE_DIST_SQ = 60 * 60 * 3;
+  const MERGE_DIST_SQ = 40 * 40 * 3;
   let merged = true;
   while (merged) {
     merged = false;
