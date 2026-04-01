@@ -9,6 +9,7 @@ import type { TraceConfig } from '../../types/pipeline';
 import type { ITracer } from './tracer';
 import type { WorkerImageData } from '../image-utils';
 import { compositeOnWhite } from '../image-utils';
+import { createSafeImageData } from '../safe-image-data';
 import { extractColorLayers } from './color-quantize';
 import { extractSvgPaths } from './svg-builder';
 
@@ -41,9 +42,7 @@ async function traceMask(
     pixels[off + 3] = 255;
   }
 
-  const safePx = pixels.byteOffset === 0 && pixels.byteLength === pixels.buffer.byteLength
-    ? pixels : new Uint8ClampedArray(pixels.slice());
-  const imageData = new ImageData(safePx, w, h);
+  const imageData = createSafeImageData(pixels, w, h);
 
   const svg: string = await mod.potrace(imageData, {
     turdsize: config.turdSize ?? 2,
@@ -123,7 +122,7 @@ export class PotraceTracer implements ITracer {
     const whiteComposite = compositeOnWhite(data, width, height);
     const pixels = new Uint8ClampedArray(width * height * 4);
     pixels.set(whiteComposite);
-    const imageData = new ImageData(pixels, width, height);
+    const imageData = createSafeImageData(pixels, width, height);
 
     return mod.potrace(imageData, {
       turdsize: config.turdSize ?? 2,
