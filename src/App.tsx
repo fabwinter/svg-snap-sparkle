@@ -39,6 +39,7 @@ export default function App() {
     setPreset(p);
     setColorCount(PRESETS[p].colorCount);
     setRemoveBg(PRESETS[p].removeBg);
+    setAdvanced(getDefaultAdvanced(p));
   }, []);
 
   const handleConvert = useCallback(async () => {
