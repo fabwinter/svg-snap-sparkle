@@ -56,6 +56,11 @@ export default function App() {
     setPaletteEdited(false);
   }, []);
 
+  const handleColorCountChange = useCallback((n: number) => {
+    setColorCount(n);
+    setPaletteEdited(false); // re-detect palette to match new count
+  }, []);
+
   const handlePaletteChange = useCallback((next: string[]) => {
     setPalette(next);
     setPaletteEdited(true);
@@ -77,7 +82,7 @@ export default function App() {
         traceConfig.palette = activePalette.map(hexToRgb);
         traceConfig.colorPrecision = activePalette.length;
       }
-      const maskConfig = buildMaskConfig(removeBg);
+      const maskConfig = buildMaskConfig(removeBg, advanced.bgTolerance);
       const result = await workerClient.current.process(
         imageData, maskConfig, DEFAULT_CLEANUP, traceConfig,
         { onProgress: (stage, percent) => { setProgressStage(stage); setProgressPercent(percent); } }
@@ -107,9 +112,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-[720px] mx-auto px-4 py-8 space-y-6">
+      <div className="max-w-[720px] mx-auto px-4 py-6">
         {/* Header */}
-        <header className="text-center space-y-1 pb-2">
+        <header className="text-center space-y-1 pb-4">
           <h1 className="text-lg font-bold text-foreground flex items-center justify-center gap-2">
             <Sparkles className="w-5 h-5 text-primary" />
             SVGmagic Lite
@@ -119,60 +124,64 @@ export default function App() {
           </p>
         </header>
 
-        {/* Canvas slot — shows uploader / loaded image / SVG result in one place */}
-        {step === 'preview' && svgString && sourceFile ? (
-          <PreviewCanvas
-            originalFile={sourceFile}
-            svgString={svgString}
-            svgWidth={svgWidth}
-            svgHeight={svgHeight}
-          />
-        ) : (
-          <ImageImport
-            onImageLoaded={handleImageLoaded}
-            sourceFile={sourceFile}
-            imageData={imageData}
-            onReset={handleReset}
-          />
-        )}
+        {/* Sticky canvas slot — locked while panel below scrolls */}
+        <div className="sticky top-0 z-20 bg-background pt-2 pb-4 -mx-4 px-4">
+          {step === 'preview' && svgString && sourceFile ? (
+            <PreviewCanvas
+              originalFile={sourceFile}
+              svgString={svgString}
+              svgWidth={svgWidth}
+              svgHeight={svgHeight}
+            />
+          ) : (
+            <ImageImport
+              onImageLoaded={handleImageLoaded}
+              sourceFile={sourceFile}
+              imageData={imageData}
+              onReset={handleReset}
+            />
+          )}
+        </div>
 
-        {/* Step: Settings */}
-        {(step === 'settings' || step === 'processing' || step === 'preview') && (
-          <SettingsPanel
-            preset={preset}
-            colorCount={colorCount}
-            removeBg={removeBg}
-            hasImage={!!imageData}
-            advanced={advanced}
-            palette={palette}
-            onPresetChange={handlePresetChange}
-            onColorCountChange={setColorCount}
-            onRemoveBgChange={setRemoveBg}
-            onAdvancedChange={setAdvanced}
-            onPaletteChange={handlePaletteChange}
-            onConvert={handleConvert}
-          />
-        )}
+        <div className="space-y-6 pt-2">
+          {/* Step: Settings */}
+          {(step === 'settings' || step === 'processing' || step === 'preview') && (
+            <SettingsPanel
+              preset={preset}
+              colorCount={colorCount}
+              removeBg={removeBg}
+              hasImage={!!imageData}
+              advanced={advanced}
+              palette={palette}
+              onPresetChange={handlePresetChange}
+              onColorCountChange={handleColorCountChange}
+              onRemoveBgChange={setRemoveBg}
+              onAdvancedChange={setAdvanced}
+              onPaletteChange={handlePaletteChange}
+              onConvert={handleConvert}
+            />
+          )}
 
-        {/* Step: Processing */}
-        {step === 'processing' && (
-          <ProcessingState
-            stage={progressStage}
-            percent={progressPercent}
-            error={error}
-            onRetry={handleConvert}
-          />
-        )}
+          {/* Step: Processing */}
+          {step === 'processing' && (
+            <ProcessingState
+              stage={progressStage}
+              percent={progressPercent}
+              error={error}
+              onRetry={handleConvert}
+            />
+          )}
 
-        {/* Action bar (preview only) */}
-        {step === 'preview' && svgString && sourceFile && (
-          <ActionBar
-            svgString={svgString}
-            originalFilename={sourceFile.name}
-            onRerun={handleRerun}
-            onNewImage={handleReset}
-          />
-        )}
+          {/* Action bar (preview only) */}
+          {step === 'preview' && svgString && sourceFile && (
+            <ActionBar
+              svgString={svgString}
+              originalFilename={sourceFile.name}
+              onRerun={handleRerun}
+              onNewImage={handleReset}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

@@ -22,13 +22,14 @@ export interface AdvancedDefaults {
   optTolerance: number;
   filterSpeckle: number;
   pathOverlap: number;
+  bgTolerance: number;
 }
 
 const ADVANCED_DEFAULTS: Record<PresetType, AdvancedDefaults> = {
-  logo:         { turdSize: 2, alphaMax: 1.0, optTolerance: 0.1, filterSpeckle: 4, pathOverlap: 2 },
-  clipart:      { turdSize: 4, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 0, pathOverlap: 4 },
-  illustration: { turdSize: 4, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 0, pathOverlap: 4 },
-  photo:        { turdSize: 2, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 4, pathOverlap: 0 },
+  logo:         { turdSize: 2, alphaMax: 1.0, optTolerance: 0.1, filterSpeckle: 4, pathOverlap: 2, bgTolerance: 20 },
+  clipart:      { turdSize: 4, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 0, pathOverlap: 4, bgTolerance: 25 },
+  illustration: { turdSize: 4, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 0, pathOverlap: 4, bgTolerance: 30 },
+  photo:        { turdSize: 2, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 4, pathOverlap: 0, bgTolerance: 35 },
 };
 
 export function getDefaultAdvanced(preset: PresetType): AdvancedDefaults {
@@ -53,8 +54,8 @@ export function buildTraceConfig(
   };
 }
 
-export function buildMaskConfig(removeBg: boolean): MaskConfig {
+export function buildMaskConfig(removeBg: boolean, bgTolerance = 20): MaskConfig {
   return removeBg
-    ? { mode: 'solid-color', alphaThreshold: 128, colorTolerance: 20, borderOnly: true }
+    ? { mode: 'solid-color', alphaThreshold: 128, colorTolerance: bgTolerance, borderOnly: true }
     : { mode: 'none', alphaThreshold: 128 };
 }

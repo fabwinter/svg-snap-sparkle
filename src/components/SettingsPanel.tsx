@@ -12,6 +12,7 @@ export interface AdvancedSettings {
   optTolerance: number;
   filterSpeckle: number;
   pathOverlap: number;
+  bgTolerance: number;
 }
 
 interface SettingsPanelProps {
@@ -72,6 +73,12 @@ const ADVANCED_FIELDS: {
     min: 0, max: 8, step: 1,
     presets: ['logo', 'clipart', 'illustration', 'photo'],
   },
+  {
+    key: 'bgTolerance',
+    label: 'Background tolerance',
+    description: 'How aggressively to remove background colour (higher = more removed)',
+    min: 0, max: 80, step: 1,
+  },
 ];
 
 export default function SettingsPanel({
@@ -81,9 +88,10 @@ export default function SettingsPanel({
 }: SettingsPanelProps) {
   const [open, setOpen] = useState(false);
 
-  const visibleFields = ADVANCED_FIELDS.filter(
-    (f) => !f.presets || f.presets.includes(preset)
-  );
+  const visibleFields = ADVANCED_FIELDS.filter((f) => {
+    if (f.key === 'bgTolerance') return removeBg;
+    return !f.presets || f.presets.includes(preset);
+  });
 
   const updateField = (key: keyof AdvancedSettings, value: number) => {
     onAdvancedChange({ ...advanced, [key]: value });

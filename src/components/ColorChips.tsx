@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pipette, Search, X } from 'lucide-react';
 
 interface ColorChipsProps {
@@ -9,17 +9,10 @@ interface ColorChipsProps {
 
 export default function ColorChips({ colors, onChange, detectedCount }: ColorChipsProps) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [draft, setDraft] = useState('#888888');
   const [search, setSearch] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const slots = useMemo(
-    () => Array.from({ length: detectedCount }, (_, i) => colors[i] || ''),
-    [colors, detectedCount],
-  );
-
-  const selectedIndex = Math.min(activeIndex, Math.max(0, detectedCount - 1));
+  const slots = Array.from({ length: detectedCount }, (_, i) => colors[i] || '');
 
   const commitSlot = (idx: number, hex: string) => {
     const next = [...slots];
@@ -27,23 +20,21 @@ export default function ColorChips({ colors, onChange, detectedCount }: ColorChi
     onChange(next);
   };
 
-  useEffect(() => {
-    if (pickerOpen) {
-      // Open native picker as soon as we mount the input
-      requestAnimationFrame(() => inputRef.current?.click());
-    }
-  }, [pickerOpen]);
-
   const remove = (idx: number) => {
     const next = [...slots];
     next[idx] = '';
     onChange(next);
   };
 
-  const choose = (hex: string) => {
-    commitSlot(selectedIndex, hex);
-    setSearch(hex.toLowerCase());
-    setPickerOpen(false);
+  const openPickerFor = (idx: number) => {
+    setActiveIndex(idx);
+    // Defer the click so React commits the value first
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.value = slots[idx] || '#888888';
+        inputRef.current.click();
+      }
+    });
   };
 
   const pickWithEyeDropper = async () => {
@@ -51,17 +42,21 @@ export default function ColorChips({ colors, onChange, detectedCount }: ColorChi
       EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> };
     }).EyeDropper;
     if (!EyeDropperCtor) {
-      setPickerOpen(true);
+      openPickerFor(activeIndex);
       return;
     }
-    const result = await new EyeDropperCtor().open();
-    choose(result.sRGBHex);
+    try {
+      const result = await new EyeDropperCtor().open();
+      commitSlot(activeIndex, result.sRGBHex);
+    } catch {
+      /* user cancelled */
+    }
   };
 
   const updateSearch = (value: string) => {
     setSearch(value);
     const hex = value.trim();
-    if (/^#[0-9a-fA-F]{6}$/.test(hex)) choose(hex);
+    if (/^#[0-9a-fA-F]{6}$/.test(hex)) commitSlot(activeIndex, hex);
   };
 
   return (
@@ -96,12 +91,12 @@ export default function ColorChips({ colors, onChange, detectedCount }: ColorChi
 
       <div className="flex flex-wrap gap-2">
         {slots.map((hex, i) => (
-          <div key={`${i}-${hex || 'empty'}`} className="relative group">
+          <div key={i} className="relative group">
             <button
               type="button"
-              onClick={() => { setActiveIndex(i); setDraft(hex || draft); setPickerOpen(true); }}
+              onClick={() => openPickerFor(i)}
               aria-label={hex ? `Change ${hex}` : `Add colour ${i + 1}`}
-              className={`w-9 h-9 rounded-md border shadow-sm transition-all ${i === selectedIndex ? 'border-primary ring-2 ring-primary/30' : 'border-border'} ${hex ? '' : 'border-dashed bg-secondary text-muted-foreground'}`}
+              className={`w-9 h-9 rounded-md border shadow-sm transition-all flex items-center justify-center ${i === activeIndex ? 'border-primary ring-2 ring-primary/30' : 'border-border'} ${hex ? '' : 'border-dashed bg-secondary text-muted-foreground'}`}
               style={hex ? { backgroundColor: hex } : undefined}
               title={hex || 'Add colour'}
             >
@@ -110,7 +105,7 @@ export default function ColorChips({ colors, onChange, detectedCount }: ColorChi
             {hex && (
               <button
                 type="button"
-                onClick={() => remove(i)}
+                onClick={(e) => { e.stopPropagation(); remove(i); }}
                 aria-label={`Remove ${hex}`}
                 className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
@@ -119,18 +114,18 @@ export default function ColorChips({ colors, onChange, detectedCount }: ColorChi
             )}
           </div>
         ))}
-
-        {pickerOpen && (
-          <input
-            ref={inputRef}
-            type="color"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => choose(draft)}
-            className="w-0 h-0 opacity-0 absolute"
-          />
-        )}
       </div>
+
+      {/* Single always-mounted hidden colour input */}
+      <input
+        ref={inputRef}
+        type="color"
+        defaultValue="#888888"
+        onChange={(e) => commitSlot(activeIndex, e.target.value)}
+        className="sr-only absolute pointer-events-none"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
     </div>
   );
 }
