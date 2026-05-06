@@ -69,10 +69,13 @@ export default function App() {
     setProgressPercent(0);
 
     try {
+      const activePalette = palette
+        .slice(0, colorCount)
+        .filter((hex) => /^#[0-9a-fA-F]{6}$/.test(hex));
       const traceConfig = buildTraceConfig(preset, colorCount, advanced);
-      if (palette.length > 0) {
-        traceConfig.palette = palette.map(hexToRgb);
-        traceConfig.colorPrecision = palette.length;
+      if (activePalette.length > 0) {
+        traceConfig.palette = activePalette.map(hexToRgb);
+        traceConfig.colorPrecision = activePalette.length;
       }
       const maskConfig = buildMaskConfig(removeBg);
       const result = await workerClient.current.process(
