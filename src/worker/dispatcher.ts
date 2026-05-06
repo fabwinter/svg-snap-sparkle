@@ -120,31 +120,20 @@ export async function runPipeline(
   const origW = w;
   const origH = h;
 
-  // ── Step 0: Resize if needed ──────────────────────────────────
-  let maxDim = Math.max(w, h);
-
-  if (maxDim < MIN_DIMENSION) {
-    callbacks.onProgress('Upscaling image', 2);
-    const scale = MIN_DIMENSION / maxDim;
-    const newW = Math.round(w * scale);
-    const newH = Math.round(h * scale);
-    rgba = upscaleRgba(rgba, w, h, newW, newH);
-    w = newW;
-    h = newH;
-    maxDim = Math.max(w, h);
-  }
-
-  // Downscale large images to avoid WASM stack overflow in Potrace.
-  const traceScale = Math.min(
+  // ── Step 0: Scale image as large as possible before masking/tracing ──
+  // Upscale to fill the maximum trace budget so detail is preserved
+  // through mask cleanup and vectorization. If the image is already
+  // larger than the budget, this becomes a downscale.
+  const maxDim = Math.max(w, h);
+  const scale = Math.min(
     MAX_TRACE_DIMENSION / maxDim,
     Math.sqrt(MAX_TRACE_PIXELS / (w * h)),
-    1,
   );
 
-  if (traceScale < 1) {
-    callbacks.onProgress('Downscaling for trace', 3);
-    const newW = Math.max(1, Math.round(w * traceScale));
-    const newH = Math.max(1, Math.round(h * traceScale));
+  if (Math.abs(scale - 1) > 0.01) {
+    callbacks.onProgress(scale > 1 ? 'Upscaling image' : 'Downscaling for trace', 3);
+    const newW = Math.max(1, Math.round(w * scale));
+    const newH = Math.max(1, Math.round(h * scale));
     rgba = upscaleRgba(rgba, w, h, newW, newH);
     w = newW;
     h = newH;
