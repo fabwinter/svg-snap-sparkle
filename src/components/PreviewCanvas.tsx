@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Layers, FileText, Maximize2 } from 'lucide-react';
+import { Layers, FileText, Maximize2, Move, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 
 type ViewMode = 'original' | 'svg' | 'split';
 
@@ -13,8 +13,12 @@ interface PreviewCanvasProps {
 export default function PreviewCanvas({ originalFile, svgString, svgWidth, svgHeight }: PreviewCanvasProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('split');
   const [splitPos, setSplitPos] = useState(50);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  const panning = useRef(false);
+  const lastPoint = useRef({ x: 0, y: 0 });
 
   const originalUrl = URL.createObjectURL(originalFile);
   const svgBlob = new Blob([svgString], { type: 'image/svg+xml' });
@@ -23,20 +27,50 @@ export default function PreviewCanvas({ originalFile, svgString, svgWidth, svgHe
   const pathCount = (svgString.match(/<path/g) || []).length;
   const sizeKB = Math.round(svgString.length / 1024);
 
-  const handlePointerDown = useCallback(() => { dragging.current = true; }, []);
-  const _handlePointerUp = useCallback(() => { dragging.current = false; }, []);
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragging.current || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    setSplitPos(Math.max(5, Math.min(95, x)));
+  const clampZoom = (value: number) => Math.max(1, Math.min(6, value));
+  const setZoomLevel = useCallback((next: number) => {
+    const value = clampZoom(next);
+    setZoom(value);
+    if (value === 1) setPan({ x: 0, y: 0 });
   }, []);
 
+  const resetView = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, []);
+  const handlePointerDown = useCallback((e: React.PointerEvent) => { e.stopPropagation(); dragging.current = true; }, []);
+  const handleCanvasPointerDown = useCallback((e: React.PointerEvent) => {
+    if (zoom <= 1) return;
+    panning.current = true;
+    lastPoint.current = { x: e.clientX, y: e.clientY };
+  }, [zoom]);
+  const _handlePointerUp = useCallback(() => { dragging.current = false; }, []);
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (dragging.current && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      setSplitPos(Math.max(5, Math.min(95, x)));
+      return;
+    }
+    if (!panning.current) return;
+    const dx = e.clientX - lastPoint.current.x;
+    const dy = e.clientY - lastPoint.current.y;
+    lastPoint.current = { x: e.clientX, y: e.clientY };
+    setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+  }, []);
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    setZoomLevel(zoom + (e.deltaY < 0 ? 0.25 : -0.25));
+  }, [setZoomLevel, zoom]);
+
   useEffect(() => {
-    const up = () => { dragging.current = false; };
+    const up = () => { dragging.current = false; panning.current = false; };
     window.addEventListener('pointerup', up);
     return () => window.removeEventListener('pointerup', up);
   }, []);
+
+  const imageTransform = {
+    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+    transformOrigin: 'center',
+  };
 
   const viewButtons: { mode: ViewMode; label: string }[] = [
     { mode: 'original', label: 'Original' },
@@ -51,15 +85,17 @@ export default function PreviewCanvas({ originalFile, svgString, svgWidth, svgHe
         ref={containerRef}
         className="checkerboard relative overflow-hidden select-none"
         style={{ aspectRatio: `${svgWidth} / ${svgHeight}`, maxHeight: 420 }}
+        onPointerDown={handleCanvasPointerDown}
         onPointerMove={handlePointerMove}
+        onWheel={handleWheel}
       >
         {/* Original layer */}
         {(viewMode === 'original' || viewMode === 'split') && (
           <img
             src={originalUrl}
             alt="Original"
-            className="absolute inset-0 w-full h-full object-contain"
-            style={viewMode === 'split' ? { clipPath: `inset(0 ${100 - splitPos}% 0 0)` } : undefined}
+            className={`absolute inset-0 w-full h-full object-contain ${zoom > 1 ? 'cursor-grab' : ''}`}
+            style={viewMode === 'split' ? { ...imageTransform, clipPath: `inset(0 ${100 - splitPos}% 0 0)` } : imageTransform}
             draggable={false}
           />
         )}
@@ -68,8 +104,8 @@ export default function PreviewCanvas({ originalFile, svgString, svgWidth, svgHe
           <img
             src={svgUrl}
             alt="SVG result"
-            className="absolute inset-0 w-full h-full object-contain"
-            style={viewMode === 'split' ? { clipPath: `inset(0 0 0 ${splitPos}%)` } : undefined}
+            className={`absolute inset-0 w-full h-full object-contain ${zoom > 1 ? 'cursor-grab' : ''}`}
+            style={viewMode === 'split' ? { ...imageTransform, clipPath: `inset(0 0 0 ${splitPos}%)` } : imageTransform}
             draggable={false}
           />
         )}
@@ -105,6 +141,13 @@ export default function PreviewCanvas({ originalFile, svgString, svgWidth, svgHe
               {label}
             </button>
           ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setZoomLevel(zoom - 0.25)} className="w-9 h-9 rounded-md bg-secondary text-muted-foreground hover:text-foreground flex items-center justify-center" aria-label="Zoom out"><ZoomOut className="w-4 h-4" /></button>
+          <div className="flex-1 h-9 rounded-md bg-secondary text-xs font-medium text-muted-foreground flex items-center justify-center gap-2"><Move className="w-3.5 h-3.5" />{Math.round(zoom * 100)}%</div>
+          <button type="button" onClick={() => setZoomLevel(zoom + 0.25)} className="w-9 h-9 rounded-md bg-secondary text-muted-foreground hover:text-foreground flex items-center justify-center" aria-label="Zoom in"><ZoomIn className="w-4 h-4" /></button>
+          <button type="button" onClick={resetView} className="w-9 h-9 rounded-md bg-secondary text-muted-foreground hover:text-foreground flex items-center justify-center" aria-label="Reset view"><RotateCcw className="w-4 h-4" /></button>
         </div>
 
         {/* Metadata */}
