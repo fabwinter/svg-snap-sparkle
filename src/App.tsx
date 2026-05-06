@@ -29,6 +29,17 @@ export default function App() {
   const [progressStage, setProgressStage] = useState('');
   const [progressPercent, setProgressPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [palette, setPalette] = useState<string[]>([]);
+  const [paletteEdited, setPaletteEdited] = useState(false);
+
+  // Auto-detect palette whenever the image or requested colour count changes,
+  // unless the user has manually edited the palette.
+  useEffect(() => {
+    if (!imageData) { setPalette([]); setPaletteEdited(false); return; }
+    if (paletteEdited) return;
+    const hexes = detectPaletteHex(imageData, colorCount);
+    setPalette(hexes);
+  }, [imageData, colorCount, paletteEdited]);
 
   const handleImageLoaded = useCallback((file: File, data: ImageData) => {
     setSourceFile(file);
