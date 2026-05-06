@@ -21,9 +21,10 @@ import { stripBackgroundRect } from './tracing/svg-builder';
 /** Minimum dimension for tracing. */
 const MIN_DIMENSION = 512;
 
-/** Maximum dimension for tracing. esm-potrace-wasm uses stackAlloc for pixel
- *  data, so large images overflow the WASM stack. Cap to keep safe. */
+/** Maximum trace size. esm-potrace-wasm passes RGBA through WASM stackAlloc;
+ *  mobile Safari throws “Offset should not be negative” when that array is too large. */
 const MAX_TRACE_DIMENSION = 1200;
+const MAX_TRACE_PIXELS = 520_000;
 
 export interface DispatcherCallbacks {
   onProgress(stage: string, percent: number): void;
@@ -133,12 +134,17 @@ export async function runPipeline(
     maxDim = Math.max(w, h);
   }
 
-  // Downscale large images to avoid WASM stack overflow in Potrace
-  if (maxDim > MAX_TRACE_DIMENSION) {
+  // Downscale large images to avoid WASM stack overflow in Potrace.
+  const traceScale = Math.min(
+    MAX_TRACE_DIMENSION / maxDim,
+    Math.sqrt(MAX_TRACE_PIXELS / (w * h)),
+    1,
+  );
+
+  if (traceScale < 1) {
     callbacks.onProgress('Downscaling for trace', 3);
-    const scale = MAX_TRACE_DIMENSION / maxDim;
-    const newW = Math.round(w * scale);
-    const newH = Math.round(h * scale);
+    const newW = Math.max(1, Math.round(w * traceScale));
+    const newH = Math.max(1, Math.round(h * traceScale));
     rgba = upscaleRgba(rgba, w, h, newW, newH);
     w = newW;
     h = newH;
