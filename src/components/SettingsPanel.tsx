@@ -133,6 +133,15 @@ export default function SettingsPanel({
         />
       </div>
 
+      {/* Detected colour chips */}
+      {hasImage && palette.length > 0 && (
+        <ColorChips
+          colors={palette}
+          onChange={onPaletteChange}
+          detectedCount={colorCount}
+        />
+      )}
+
       {/* Remove bg */}
       <label className="flex items-center gap-3 cursor-pointer group">
         <Checkbox
