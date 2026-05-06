@@ -86,7 +86,7 @@ export default function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     }
-  }, [imageData, preset, colorCount, removeBg, advanced]);
+  }, [imageData, preset, colorCount, removeBg, advanced, palette]);
 
   const handleRerun = useCallback(() => {
     setSvgString(null);
