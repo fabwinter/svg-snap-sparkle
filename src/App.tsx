@@ -116,13 +116,22 @@ export default function App() {
           </p>
         </header>
 
-        {/* Step: Import (always visible so user can see loaded image) */}
-        <ImageImport
-          onImageLoaded={handleImageLoaded}
-          sourceFile={sourceFile}
-          imageData={imageData}
-          onReset={handleReset}
-        />
+        {/* Canvas slot — shows uploader / loaded image / SVG result in one place */}
+        {step === 'preview' && svgString && sourceFile ? (
+          <PreviewCanvas
+            originalFile={sourceFile}
+            svgString={svgString}
+            svgWidth={svgWidth}
+            svgHeight={svgHeight}
+          />
+        ) : (
+          <ImageImport
+            onImageLoaded={handleImageLoaded}
+            sourceFile={sourceFile}
+            imageData={imageData}
+            onReset={handleReset}
+          />
+        )}
 
         {/* Step: Settings */}
         {(step === 'settings' || step === 'processing' || step === 'preview') && (
@@ -132,10 +141,12 @@ export default function App() {
             removeBg={removeBg}
             hasImage={!!imageData}
             advanced={advanced}
+            palette={palette}
             onPresetChange={handlePresetChange}
             onColorCountChange={setColorCount}
             onRemoveBgChange={setRemoveBg}
             onAdvancedChange={setAdvanced}
+            onPaletteChange={handlePaletteChange}
             onConvert={handleConvert}
           />
         )}
@@ -150,22 +161,14 @@ export default function App() {
           />
         )}
 
-        {/* Step: Preview + Actions */}
+        {/* Action bar (preview only) */}
         {step === 'preview' && svgString && sourceFile && (
-          <>
-            <PreviewCanvas
-              originalFile={sourceFile}
-              svgString={svgString}
-              svgWidth={svgWidth}
-              svgHeight={svgHeight}
-            />
-            <ActionBar
-              svgString={svgString}
-              originalFilename={sourceFile.name}
-              onRerun={handleRerun}
-              onNewImage={handleReset}
-            />
-          </>
+          <ActionBar
+            svgString={svgString}
+            originalFilename={sourceFile.name}
+            onRerun={handleRerun}
+            onNewImage={handleReset}
+          />
         )}
       </div>
     </div>
