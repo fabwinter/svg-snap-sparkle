@@ -67,8 +67,17 @@ function isLinearBlend(
 function findNearestColor(
   r: number, g: number, b: number,
   colors: [number, number, number][],
+  meta?: { achromaticDominant: boolean; lightestIdx: number; darkestIdx: number; midThreshold: number },
 ): number {
   const pixelL = (Math.max(r, g, b) + Math.min(r, g, b)) / (2 * 255);
+  const pixelChroma = Math.max(r, g, b) - Math.min(r, g, b);
+
+  // Fringe-snap: in achromatic-dominated palettes, chromatic pixels are JPEG
+  // edge noise. Snap them to the nearest *extreme* (lightest/darkest) so the
+  // edge stays crisp instead of bleeding into a mid-gray halo.
+  if (meta && meta.achromaticDominant && pixelChroma > 25) {
+    return pixelL >= meta.midThreshold ? meta.lightestIdx : meta.darkestIdx;
+  }
 
   const COLOR_CHROMA_MIN = 30;
   const LIGHTNESS_GAP_MIN = 0.35;
@@ -93,6 +102,33 @@ function findNearestColor(
     }
   }
   return bestIdx;
+}
+
+function buildAchromaticMeta(colors: [number, number, number][]) {
+  const chroma = (c: [number, number, number]) => Math.max(...c) - Math.min(...c);
+  const lightness = (c: [number, number, number]) =>
+    (Math.max(...c) + Math.min(...c)) / (2 * 255);
+
+  const achromaticIdx: number[] = [];
+  for (let i = 0; i < colors.length; i++) {
+    if (chroma(colors[i]) < 25) achromaticIdx.push(i);
+  }
+  const achromaticDominant = achromaticIdx.length >= 2 &&
+    achromaticIdx.length >= colors.length - 1;
+
+  if (!achromaticDominant) {
+    return { achromaticDominant: false, lightestIdx: 0, darkestIdx: 0, midThreshold: 0.5 };
+  }
+
+  let lightestIdx = achromaticIdx[0];
+  let darkestIdx = achromaticIdx[0];
+  for (const i of achromaticIdx) {
+    if (lightness(colors[i]) > lightness(colors[lightestIdx])) lightestIdx = i;
+    if (lightness(colors[i]) < lightness(colors[darkestIdx])) darkestIdx = i;
+  }
+  const midThreshold =
+    (lightness(colors[lightestIdx]) + lightness(colors[darkestIdx])) / 2;
+  return { achromaticDominant: true, lightestIdx, darkestIdx, midThreshold };
 }
 
 /**
@@ -262,11 +298,12 @@ export function extractColorLayers(
 
   if (finalColors.length === 0) return [];
 
+  const meta = buildAchromaticMeta(finalColors);
   const masks: Uint8Array[] = finalColors.map(() => new Uint8Array(totalPixels));
   for (let i = 0; i < totalPixels; i++) {
     const off = i * 4;
     if (rgba[off + 3] < MASK_ALPHA) continue;
-    const idx = findNearestColor(rgba[off], rgba[off + 1], rgba[off + 2], finalColors);
+    const idx = findNearestColor(rgba[off], rgba[off + 1], rgba[off + 2], finalColors, meta);
     masks[idx][i] = 255;
   }
 
