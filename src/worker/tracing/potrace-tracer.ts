@@ -198,7 +198,11 @@ export class PotraceTracer implements ITracer {
     // anti-aliased fringe of intermediate colours, preventing halos around
     // dark lines (e.g. green fringe around black detail in the Starbucks logo).
     const dilatePasses = config.pathOverlap ?? 3;
-    const topmostExtra = 1; // always at least 1px dilation on top to kill fringes
+    // Only dilate the topmost (darkest) layer when there are intermediate
+    // colours that could leave anti-aliased halos. For 2-colour (B&W) traces,
+    // dilating the top layer erodes fine detail (eyes, nose, lips) without
+    // any fringe to suppress.
+    const topmostExtra = layers.length > 2 ? 1 : 0;
     for (let si = 0; si < stackedMasks.length; si++) {
       const passes = si < stackedMasks.length - 1 ? dilatePasses : topmostExtra;
       let m = stackedMasks[si];
