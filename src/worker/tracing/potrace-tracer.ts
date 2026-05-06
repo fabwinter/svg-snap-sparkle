@@ -164,7 +164,7 @@ export class PotraceTracer implements ITracer {
     config: TraceConfig,
   ): Promise<string> {
     const maxColors = config.colorPrecision ?? 8;
-    const layers = extractColorLayers(data, width, height, maxColors);
+    const layers = extractColorLayers(data, width, height, maxColors, config.palette);
 
     if (layers.length === 0) {
       return this.traceOutline(data, width, height, config);
