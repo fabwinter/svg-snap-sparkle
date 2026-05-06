@@ -44,6 +44,7 @@ export default function App() {
   const handleImageLoaded = useCallback((file: File, data: ImageData) => {
     setSourceFile(file);
     setImageData(data);
+    setPaletteEdited(false);
     setStep('settings');
   }, []);
 
@@ -52,6 +53,12 @@ export default function App() {
     setColorCount(PRESETS[p].colorCount);
     setRemoveBg(PRESETS[p].removeBg);
     setAdvanced(getDefaultAdvanced(p));
+    setPaletteEdited(false);
+  }, []);
+
+  const handlePaletteChange = useCallback((next: string[]) => {
+    setPalette(next);
+    setPaletteEdited(true);
   }, []);
 
   const handleConvert = useCallback(async () => {
@@ -63,6 +70,10 @@ export default function App() {
 
     try {
       const traceConfig = buildTraceConfig(preset, colorCount, advanced);
+      if (palette.length > 0) {
+        traceConfig.palette = palette.map(hexToRgb);
+        traceConfig.colorPrecision = palette.length;
+      }
       const maskConfig = buildMaskConfig(removeBg);
       const result = await workerClient.current.process(
         imageData, maskConfig, DEFAULT_CLEANUP, traceConfig,
