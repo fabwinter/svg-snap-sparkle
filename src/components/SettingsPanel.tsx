@@ -88,9 +88,10 @@ export default function SettingsPanel({
 }: SettingsPanelProps) {
   const [open, setOpen] = useState(false);
 
-  const visibleFields = ADVANCED_FIELDS.filter(
-    (f) => !f.presets || f.presets.includes(preset)
-  );
+  const visibleFields = ADVANCED_FIELDS.filter((f) => {
+    if (f.key === 'bgTolerance') return removeBg;
+    return !f.presets || f.presets.includes(preset);
+  });
 
   const updateField = (key: keyof AdvancedSettings, value: number) => {
     onAdvancedChange({ ...advanced, [key]: value });
