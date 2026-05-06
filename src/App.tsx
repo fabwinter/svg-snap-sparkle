@@ -82,7 +82,7 @@ export default function App() {
         traceConfig.palette = activePalette.map(hexToRgb);
         traceConfig.colorPrecision = activePalette.length;
       }
-      const maskConfig = buildMaskConfig(removeBg);
+      const maskConfig = buildMaskConfig(removeBg, advanced.bgTolerance);
       const result = await workerClient.current.process(
         imageData, maskConfig, DEFAULT_CLEANUP, traceConfig,
         { onProgress: (stage, percent) => { setProgressStage(stage); setProgressPercent(percent); } }
