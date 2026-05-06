@@ -96,13 +96,28 @@ function findNearestColor(
 }
 
 /**
+ * Extract a representative palette of up to `maxColors` colors from an RGBA image.
+ * Pure analysis — does not build masks. Use for UI previews.
+ */
+export function extractPalette(
+  rgba: Uint8ClampedArray,
+  w: number,
+  h: number,
+  maxColors: number = 12,
+): [number, number, number][] {
+  return runQuantization(rgba, w, h, maxColors).finalColors;
+}
+
+/**
  * Quantize masked RGBA image into distinct color layers.
+ * If `paletteOverride` is provided, skip clustering and assign pixels to those colors.
  */
 export function extractColorLayers(
   rgba: Uint8ClampedArray,
   w: number,
   h: number,
   maxColors: number = 12,
+  paletteOverride?: [number, number, number][],
 ): ColorLayer[] {
   const totalPixels = w * h;
 
