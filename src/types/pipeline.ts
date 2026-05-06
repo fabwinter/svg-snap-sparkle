@@ -45,6 +45,8 @@ export interface TraceConfig {
   pathOverlap?: number;
   /** Line Art brightness threshold (0–255). Default 128 */
   bwThreshold?: number;
+  /** Optional explicit palette to use instead of auto-detection */
+  palette?: [number, number, number][];
 }
 
 /** Full processing request sent to the worker */
