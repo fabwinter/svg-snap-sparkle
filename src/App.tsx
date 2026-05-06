@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ImageImport from '@/components/ImageImport';
 import SettingsPanel from '@/components/SettingsPanel';
 import ProcessingState from '@/components/ProcessingState';
@@ -9,6 +9,7 @@ import { PresetType, PRESETS, buildTraceConfig, buildMaskConfig, getDefaultAdvan
 import { DEFAULT_CLEANUP } from '@/types/pipeline';
 import { Sparkles } from 'lucide-react';
 import type { AdvancedSettings } from '@/components/SettingsPanel';
+import { detectPaletteHex, hexToRgb } from '@/utils/palette-detect';
 
 type AppStep = 'import' | 'settings' | 'processing' | 'preview';
 
