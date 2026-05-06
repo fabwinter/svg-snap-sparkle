@@ -79,12 +79,6 @@ const ADVANCED_FIELDS: {
     min: 0, max: 8, step: 1,
     presets: ['logo', 'clipart', 'illustration', 'photo'],
   },
-  {
-    key: 'bgTolerance',
-    label: 'Background tolerance',
-    description: 'How aggressively to remove background colour (higher = more removed)',
-    min: 0, max: 80, step: 1,
-  },
 ];
 
 export default function SettingsPanel({
