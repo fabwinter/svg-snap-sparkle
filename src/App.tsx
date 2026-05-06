@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ImageImport from '@/components/ImageImport';
 import SettingsPanel from '@/components/SettingsPanel';
 import ProcessingState from '@/components/ProcessingState';
@@ -9,6 +9,7 @@ import { PresetType, PRESETS, buildTraceConfig, buildMaskConfig, getDefaultAdvan
 import { DEFAULT_CLEANUP } from '@/types/pipeline';
 import { Sparkles } from 'lucide-react';
 import type { AdvancedSettings } from '@/components/SettingsPanel';
+import { detectPaletteHex, hexToRgb } from '@/utils/palette-detect';
 
 type AppStep = 'import' | 'settings' | 'processing' | 'preview';
 
@@ -28,10 +29,22 @@ export default function App() {
   const [progressStage, setProgressStage] = useState('');
   const [progressPercent, setProgressPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [palette, setPalette] = useState<string[]>([]);
+  const [paletteEdited, setPaletteEdited] = useState(false);
+
+  // Auto-detect palette whenever the image or requested colour count changes,
+  // unless the user has manually edited the palette.
+  useEffect(() => {
+    if (!imageData) { setPalette([]); setPaletteEdited(false); return; }
+    if (paletteEdited) return;
+    const hexes = detectPaletteHex(imageData, colorCount);
+    setPalette(hexes);
+  }, [imageData, colorCount, paletteEdited]);
 
   const handleImageLoaded = useCallback((file: File, data: ImageData) => {
     setSourceFile(file);
     setImageData(data);
+    setPaletteEdited(false);
     setStep('settings');
   }, []);
 
@@ -40,6 +53,12 @@ export default function App() {
     setColorCount(PRESETS[p].colorCount);
     setRemoveBg(PRESETS[p].removeBg);
     setAdvanced(getDefaultAdvanced(p));
+    setPaletteEdited(false);
+  }, []);
+
+  const handlePaletteChange = useCallback((next: string[]) => {
+    setPalette(next);
+    setPaletteEdited(true);
   }, []);
 
   const handleConvert = useCallback(async () => {
@@ -51,6 +70,10 @@ export default function App() {
 
     try {
       const traceConfig = buildTraceConfig(preset, colorCount, advanced);
+      if (palette.length > 0) {
+        traceConfig.palette = palette.map(hexToRgb);
+        traceConfig.colorPrecision = palette.length;
+      }
       const maskConfig = buildMaskConfig(removeBg);
       const result = await workerClient.current.process(
         imageData, maskConfig, DEFAULT_CLEANUP, traceConfig,
@@ -63,7 +86,7 @@ export default function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     }
-  }, [imageData, preset, colorCount, removeBg, advanced]);
+  }, [imageData, preset, colorCount, removeBg, advanced, palette]);
 
   const handleRerun = useCallback(() => {
     setSvgString(null);
@@ -74,6 +97,8 @@ export default function App() {
     setSourceFile(null);
     setImageData(null);
     setSvgString(null);
+    setPalette([]);
+    setPaletteEdited(false);
     setStep('import');
   }, []);
 
@@ -91,13 +116,22 @@ export default function App() {
           </p>
         </header>
 
-        {/* Step: Import (always visible so user can see loaded image) */}
-        <ImageImport
-          onImageLoaded={handleImageLoaded}
-          sourceFile={sourceFile}
-          imageData={imageData}
-          onReset={handleReset}
-        />
+        {/* Canvas slot — shows uploader / loaded image / SVG result in one place */}
+        {step === 'preview' && svgString && sourceFile ? (
+          <PreviewCanvas
+            originalFile={sourceFile}
+            svgString={svgString}
+            svgWidth={svgWidth}
+            svgHeight={svgHeight}
+          />
+        ) : (
+          <ImageImport
+            onImageLoaded={handleImageLoaded}
+            sourceFile={sourceFile}
+            imageData={imageData}
+            onReset={handleReset}
+          />
+        )}
 
         {/* Step: Settings */}
         {(step === 'settings' || step === 'processing' || step === 'preview') && (
@@ -107,10 +141,12 @@ export default function App() {
             removeBg={removeBg}
             hasImage={!!imageData}
             advanced={advanced}
+            palette={palette}
             onPresetChange={handlePresetChange}
             onColorCountChange={setColorCount}
             onRemoveBgChange={setRemoveBg}
             onAdvancedChange={setAdvanced}
+            onPaletteChange={handlePaletteChange}
             onConvert={handleConvert}
           />
         )}
@@ -125,22 +161,14 @@ export default function App() {
           />
         )}
 
-        {/* Step: Preview + Actions */}
+        {/* Action bar (preview only) */}
         {step === 'preview' && svgString && sourceFile && (
-          <>
-            <PreviewCanvas
-              originalFile={sourceFile}
-              svgString={svgString}
-              svgWidth={svgWidth}
-              svgHeight={svgHeight}
-            />
-            <ActionBar
-              svgString={svgString}
-              originalFilename={sourceFile.name}
-              onRerun={handleRerun}
-              onNewImage={handleReset}
-            />
-          </>
+          <ActionBar
+            svgString={svgString}
+            originalFilename={sourceFile.name}
+            onRerun={handleRerun}
+            onNewImage={handleReset}
+          />
         )}
       </div>
     </div>

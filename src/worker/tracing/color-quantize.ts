@@ -96,16 +96,15 @@ function findNearestColor(
 }
 
 /**
- * Quantize masked RGBA image into distinct color layers.
+ * Internal: histogram + cluster merging. Returns palette + opaque pixel count.
  */
-export function extractColorLayers(
+function runQuantization(
   rgba: Uint8ClampedArray,
   w: number,
   h: number,
-  maxColors: number = 12,
-): ColorLayer[] {
+  maxColors: number,
+): { finalColors: [number, number, number][]; opaqueCount: number } {
   const totalPixels = w * h;
-
   const HIST_ALPHA = 200;
   const MASK_ALPHA = 128;
 
@@ -119,19 +118,11 @@ export function extractColorLayers(
       const off = i * 4;
       if (rgba[off + 3] < threshold) continue;
       opaqueCount++;
-
-      const r = rgba[off];
-      const g = rgba[off + 1];
-      const b = rgba[off + 2];
-
+      const r = rgba[off], g = rgba[off + 1], b = rgba[off + 2];
       const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
-
       const bucket = buckets.get(key);
       if (bucket) {
-        bucket.rSum += r;
-        bucket.gSum += g;
-        bucket.bSum += b;
-        bucket.count++;
+        bucket.rSum += r; bucket.gSum += g; bucket.bSum += b; bucket.count++;
       } else {
         buckets.set(key, { rSum: r, gSum: g, bSum: b, count: 1 });
       }
@@ -140,13 +131,9 @@ export function extractColorLayers(
 
   buildHistogram(HIST_ALPHA);
   if (buckets.size === 0) buildHistogram(MASK_ALPHA);
-  if (buckets.size === 0) return [];
+  if (buckets.size === 0) return { finalColors: [], opaqueCount: 0 };
 
-  interface Cluster {
-    color: [number, number, number];
-    count: number;
-  }
-
+  interface Cluster { color: [number, number, number]; count: number; }
   const clusters: Cluster[] = [...buckets.values()]
     .sort((a, b) => b.count - a.count)
     .map(b => ({
@@ -158,7 +145,6 @@ export function extractColorLayers(
       count: b.count,
     }));
 
-  // Merge perceptually close clusters
   const MERGE_DIST_SQ = 40 * 40 * 3;
   let merged = true;
   while (merged) {
@@ -166,11 +152,8 @@ export function extractColorLayers(
     for (let i = 0; i < clusters.length; i++) {
       for (let j = i + 1; j < clusters.length; j++) {
         if (colorDistSq(clusters[i].color, clusters[j].color) < MERGE_DIST_SQ) {
-          const wi = clusters[i].count;
-          const wj = clusters[j].count;
-          const total = wi + wj;
-          const ci = clusters[i].color;
-          const cj = clusters[j].color;
+          const wi = clusters[i].count, wj = clusters[j].count, total = wi + wj;
+          const ci = clusters[i].color, cj = clusters[j].color;
           clusters[i].color = [
             Math.round((ci[0] * wi + cj[0] * wj) / total),
             Math.round((ci[1] * wi + cj[1] * wj) / total),
@@ -186,7 +169,6 @@ export function extractColorLayers(
     }
   }
 
-  // Keep top colors, remove blends
   clusters.sort((a, b) => b.count - a.count);
   const kept = clusters.slice(0, maxColors);
 
@@ -197,22 +179,61 @@ export function extractColorLayers(
     primaries.push(cluster.color);
     finalColors.push(cluster.color);
   }
+  return { finalColors, opaqueCount };
+}
+
+/** Extract a representative palette. Pure analysis. */
+export function extractPalette(
+  rgba: Uint8ClampedArray,
+  w: number,
+  h: number,
+  maxColors: number = 12,
+): [number, number, number][] {
+  return runQuantization(rgba, w, h, maxColors).finalColors;
+}
+
+/**
+ * Quantize masked RGBA image into distinct color layers.
+ * If `paletteOverride` is provided, skip clustering and assign pixels to those colors.
+ */
+export function extractColorLayers(
+  rgba: Uint8ClampedArray,
+  w: number,
+  h: number,
+  maxColors: number = 12,
+  paletteOverride?: [number, number, number][],
+): ColorLayer[] {
+  const totalPixels = w * h;
+  const MASK_ALPHA = 128;
+
+  let finalColors: [number, number, number][];
+  let opaqueCount: number;
+
+  if (paletteOverride && paletteOverride.length > 0) {
+    finalColors = paletteOverride.map(c => [c[0], c[1], c[2]] as [number, number, number]);
+    opaqueCount = 0;
+    for (let i = 0; i < totalPixels; i++) {
+      if (rgba[i * 4 + 3] >= MASK_ALPHA) opaqueCount++;
+    }
+  } else {
+    const q = runQuantization(rgba, w, h, maxColors);
+    finalColors = q.finalColors;
+    opaqueCount = q.opaqueCount;
+  }
 
   if (finalColors.length === 0) return [];
 
-  // Build per-layer masks
   const masks: Uint8Array[] = finalColors.map(() => new Uint8Array(totalPixels));
-
   for (let i = 0; i < totalPixels; i++) {
     const off = i * 4;
     if (rgba[off + 3] < MASK_ALPHA) continue;
-
     const idx = findNearestColor(rgba[off], rgba[off + 1], rgba[off + 2], finalColors);
     masks[idx][i] = 255;
   }
 
-  // Filter tiny layers and sort by pixel count descending
-  const minPixels = Math.max(50, opaqueCount * 0.005);
+  // When a palette is user-provided, keep all colors even if tiny so the user
+  // sees the effect of their additions.
+  const minPixels = paletteOverride ? 0 : Math.max(50, opaqueCount * 0.005);
 
   const layers: ColorLayer[] = [];
   for (let idx = 0; idx < finalColors.length; idx++) {

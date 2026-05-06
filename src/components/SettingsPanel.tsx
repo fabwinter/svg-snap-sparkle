@@ -4,6 +4,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ArrowRight, Settings2, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
+import ColorChips from './ColorChips';
 
 export interface AdvancedSettings {
   turdSize: number;
@@ -19,10 +20,12 @@ interface SettingsPanelProps {
   removeBg: boolean;
   hasImage: boolean;
   advanced: AdvancedSettings;
+  palette: string[];
   onPresetChange: (p: PresetType) => void;
   onColorCountChange: (n: number) => void;
   onRemoveBgChange: (v: boolean) => void;
   onAdvancedChange: (a: AdvancedSettings) => void;
+  onPaletteChange: (next: string[]) => void;
   onConvert: () => void;
 }
 
@@ -72,8 +75,9 @@ const ADVANCED_FIELDS: {
 ];
 
 export default function SettingsPanel({
-  preset, colorCount, removeBg, hasImage, advanced,
-  onPresetChange, onColorCountChange, onRemoveBgChange, onAdvancedChange, onConvert,
+  preset, colorCount, removeBg, hasImage, advanced, palette,
+  onPresetChange, onColorCountChange, onRemoveBgChange, onAdvancedChange,
+  onPaletteChange, onConvert,
 }: SettingsPanelProps) {
   const [open, setOpen] = useState(false);
 
@@ -128,6 +132,15 @@ export default function SettingsPanel({
           onValueChange={([v]) => onColorCountChange(v)}
         />
       </div>
+
+      {/* Detected colour chips */}
+      {hasImage && palette.length > 0 && (
+        <ColorChips
+          colors={palette}
+          onChange={onPaletteChange}
+          detectedCount={colorCount}
+        />
+      )}
 
       {/* Remove bg */}
       <label className="flex items-center gap-3 cursor-pointer group">
