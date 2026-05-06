@@ -134,7 +134,7 @@ export default function SettingsPanel({
       </div>
 
       {/* Detected colour chips */}
-      {hasImage && palette.length > 0 && (
+      {hasImage && (
         <ColorChips
           colors={palette}
           onChange={onPaletteChange}
