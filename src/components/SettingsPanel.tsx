@@ -75,8 +75,9 @@ const ADVANCED_FIELDS: {
 ];
 
 export default function SettingsPanel({
-  preset, colorCount, removeBg, hasImage, advanced,
-  onPresetChange, onColorCountChange, onRemoveBgChange, onAdvancedChange, onConvert,
+  preset, colorCount, removeBg, hasImage, advanced, palette,
+  onPresetChange, onColorCountChange, onRemoveBgChange, onAdvancedChange,
+  onPaletteChange, onConvert,
 }: SettingsPanelProps) {
   const [open, setOpen] = useState(false);
 
