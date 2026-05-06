@@ -170,10 +170,17 @@ export class PotraceTracer implements ITracer {
       return this.traceOutline(data, width, height, config);
     }
 
+    // Render order: lightest at the bottom, darkest on top.
+    // This guarantees dark detail (logo lines, text) sits above lighter
+    // background colours regardless of pixel count.
+    const luminance = (c: [number, number, number]) =>
+      0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    layers.sort((a, b) => luminance(b.color) - luminance(a.color));
+
     const skipBg = config.skipBackground && layers.length > 1;
     const firstTracedLayer = skipBg ? 1 : 0;
 
-    // Build stacked masks
+    // Build stacked masks (each = union of this layer + all layers above it)
     const stackedMasks: Uint8Array[] = [];
     for (let li = firstTracedLayer; li < layers.length; li++) {
       const stacked = new Uint8Array(width * height);
@@ -186,11 +193,16 @@ export class PotraceTracer implements ITracer {
       stackedMasks.push(stacked);
     }
 
-    // Dilate non-topmost masks to eliminate seams
+    // Dilate every stacked mask. Non-topmost dilation eliminates seams between
+    // colours; topmost dilation lets the darkest layer (drawn last) eat into the
+    // anti-aliased fringe of intermediate colours, preventing halos around
+    // dark lines (e.g. green fringe around black detail in the Starbucks logo).
     const dilatePasses = config.pathOverlap ?? 3;
-    for (let si = 0; si < stackedMasks.length - 1; si++) {
+    const topmostExtra = 1; // always at least 1px dilation on top to kill fringes
+    for (let si = 0; si < stackedMasks.length; si++) {
+      const passes = si < stackedMasks.length - 1 ? dilatePasses : topmostExtra;
       let m = stackedMasks[si];
-      for (let p = 0; p < dilatePasses; p++) m = dilateMask(m, width, height);
+      for (let p = 0; p < passes; p++) m = dilateMask(m, width, height);
       stackedMasks[si] = m;
     }
 
