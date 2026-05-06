@@ -56,6 +56,11 @@ export default function App() {
     setPaletteEdited(false);
   }, []);
 
+  const handleColorCountChange = useCallback((n: number) => {
+    setColorCount(n);
+    setPaletteEdited(false); // re-detect palette to match new count
+  }, []);
+
   const handlePaletteChange = useCallback((next: string[]) => {
     setPalette(next);
     setPaletteEdited(true);
