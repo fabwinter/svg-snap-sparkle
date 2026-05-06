@@ -42,6 +42,12 @@ const ADVANCED_FIELDS: {
   presets?: PresetType[]; // only show for these presets; undefined = all
 }[] = [
   {
+    key: 'bgTolerance',
+    label: 'Background tolerance',
+    description: 'How aggressively to remove background colour (higher = more removed)',
+    min: 0, max: 80, step: 1,
+  },
+  {
     key: 'turdSize',
     label: 'Noise suppression',
     description: 'Ignore areas smaller than this (px²)',
