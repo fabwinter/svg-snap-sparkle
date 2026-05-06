@@ -4,6 +4,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ArrowRight, Settings2, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
+import ColorChips from './ColorChips';
 
 export interface AdvancedSettings {
   turdSize: number;
