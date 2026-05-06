@@ -23,8 +23,8 @@ const MIN_DIMENSION = 512;
 
 /** Maximum trace size. esm-potrace-wasm passes RGBA through WASM stackAlloc;
  *  mobile Safari throws “Offset should not be negative” when that array is too large. */
-const MAX_TRACE_DIMENSION = 1200;
-const MAX_TRACE_PIXELS = 520_000;
+const MAX_TRACE_DIMENSION = 1600;
+const MAX_TRACE_PIXELS = 1_100_000;
 
 export interface DispatcherCallbacks {
   onProgress(stage: string, percent: number): void;
