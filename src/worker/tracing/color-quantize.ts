@@ -96,9 +96,93 @@ function findNearestColor(
 }
 
 /**
- * Extract a representative palette of up to `maxColors` colors from an RGBA image.
- * Pure analysis — does not build masks. Use for UI previews.
+ * Internal: histogram + cluster merging. Returns palette + opaque pixel count.
  */
+function runQuantization(
+  rgba: Uint8ClampedArray,
+  w: number,
+  h: number,
+  maxColors: number,
+): { finalColors: [number, number, number][]; opaqueCount: number } {
+  const totalPixels = w * h;
+  const HIST_ALPHA = 200;
+  const MASK_ALPHA = 128;
+
+  const buckets = new Map<number, { rSum: number; gSum: number; bSum: number; count: number }>();
+  let opaqueCount = 0;
+
+  function buildHistogram(threshold: number): void {
+    buckets.clear();
+    opaqueCount = 0;
+    for (let i = 0; i < totalPixels; i++) {
+      const off = i * 4;
+      if (rgba[off + 3] < threshold) continue;
+      opaqueCount++;
+      const r = rgba[off], g = rgba[off + 1], b = rgba[off + 2];
+      const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+      const bucket = buckets.get(key);
+      if (bucket) {
+        bucket.rSum += r; bucket.gSum += g; bucket.bSum += b; bucket.count++;
+      } else {
+        buckets.set(key, { rSum: r, gSum: g, bSum: b, count: 1 });
+      }
+    }
+  }
+
+  buildHistogram(HIST_ALPHA);
+  if (buckets.size === 0) buildHistogram(MASK_ALPHA);
+  if (buckets.size === 0) return { finalColors: [], opaqueCount: 0 };
+
+  interface Cluster { color: [number, number, number]; count: number; }
+  const clusters: Cluster[] = [...buckets.values()]
+    .sort((a, b) => b.count - a.count)
+    .map(b => ({
+      color: [
+        Math.round(b.rSum / b.count),
+        Math.round(b.gSum / b.count),
+        Math.round(b.bSum / b.count),
+      ] as [number, number, number],
+      count: b.count,
+    }));
+
+  const MERGE_DIST_SQ = 40 * 40 * 3;
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        if (colorDistSq(clusters[i].color, clusters[j].color) < MERGE_DIST_SQ) {
+          const wi = clusters[i].count, wj = clusters[j].count, total = wi + wj;
+          const ci = clusters[i].color, cj = clusters[j].color;
+          clusters[i].color = [
+            Math.round((ci[0] * wi + cj[0] * wj) / total),
+            Math.round((ci[1] * wi + cj[1] * wj) / total),
+            Math.round((ci[2] * wi + cj[2] * wj) / total),
+          ];
+          clusters[i].count = total;
+          clusters.splice(j, 1);
+          merged = true;
+          break;
+        }
+      }
+      if (merged) break;
+    }
+  }
+
+  clusters.sort((a, b) => b.count - a.count);
+  const kept = clusters.slice(0, maxColors);
+
+  const primaries: [number, number, number][] = [];
+  const finalColors: [number, number, number][] = [];
+  for (const cluster of kept) {
+    if (isLinearBlend(cluster.color, primaries, 25)) continue;
+    primaries.push(cluster.color);
+    finalColors.push(cluster.color);
+  }
+  return { finalColors, opaqueCount };
+}
+
+/** Extract a representative palette. Pure analysis. */
 export function extractPalette(
   rgba: Uint8ClampedArray,
   w: number,
