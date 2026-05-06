@@ -170,6 +170,43 @@ function runQuantization(
   }
 
   clusters.sort((a, b) => b.count - a.count);
+
+  // Helpers
+  const chromaOf = (c: [number, number, number]) =>
+    Math.max(c[0], c[1], c[2]) - Math.min(c[0], c[1], c[2]);
+  const lightnessOf = (c: [number, number, number]) =>
+    (Math.max(c[0], c[1], c[2]) + Math.min(c[0], c[1], c[2])) / (2 * 255);
+
+  // Detect JPEG-fringe colors: low-population chromatic clusters living between
+  // two much larger achromatic clusters get absorbed into the nearest one.
+  const dominant = clusters[0]?.count ?? 1;
+  const achromatic = clusters.filter(c => chromaOf(c.color) < 18);
+  const hasGrayBackbone =
+    achromatic.length >= 2 &&
+    achromatic[0].count + (achromatic[1]?.count ?? 0) > dominant * 0.4;
+
+  if (hasGrayBackbone) {
+    for (let i = clusters.length - 1; i >= 0; i--) {
+      const c = clusters[i];
+      const chroma = chromaOf(c.color);
+      const populationRatio = c.count / dominant;
+      // Looks like edge fringe: chromatic, mid-lightness, sparse vs dominant gray
+      if (chroma > 20 && chroma < 90 && populationRatio < 0.15) {
+        // Merge into nearest achromatic cluster by lightness
+        const cl = lightnessOf(c.color);
+        let best = achromatic[0];
+        let bestD = Math.abs(lightnessOf(best.color) - cl);
+        for (const a of achromatic) {
+          const d = Math.abs(lightnessOf(a.color) - cl);
+          if (d < bestD) { bestD = d; best = a; }
+        }
+        best.count += c.count;
+        clusters.splice(i, 1);
+      }
+    }
+    clusters.sort((a, b) => b.count - a.count);
+  }
+
   const kept = clusters.slice(0, maxColors);
 
   const primaries: [number, number, number][] = [];
