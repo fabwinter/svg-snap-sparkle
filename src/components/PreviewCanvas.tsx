@@ -62,7 +62,7 @@ export default function PreviewCanvas({ originalFile, svgString, svgWidth, svgHe
   }, [setZoomLevel, zoom]);
 
   useEffect(() => {
-    const up = () => { dragging.current = false; };
+    const up = () => { dragging.current = false; panning.current = false; };
     window.addEventListener('pointerup', up);
     return () => window.removeEventListener('pointerup', up);
   }, []);
