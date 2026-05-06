@@ -12,6 +12,7 @@ export interface AdvancedSettings {
   optTolerance: number;
   filterSpeckle: number;
   pathOverlap: number;
+  bgTolerance: number;
 }
 
 interface SettingsPanelProps {
