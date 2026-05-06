@@ -298,11 +298,12 @@ export function extractColorLayers(
 
   if (finalColors.length === 0) return [];
 
+  const meta = buildAchromaticMeta(finalColors);
   const masks: Uint8Array[] = finalColors.map(() => new Uint8Array(totalPixels));
   for (let i = 0; i < totalPixels; i++) {
     const off = i * 4;
     if (rgba[off + 3] < MASK_ALPHA) continue;
-    const idx = findNearestColor(rgba[off], rgba[off + 1], rgba[off + 2], finalColors);
+    const idx = findNearestColor(rgba[off], rgba[off + 1], rgba[off + 2], finalColors, meta);
     masks[idx][i] = 255;
   }
 
