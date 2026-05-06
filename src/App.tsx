@@ -97,6 +97,8 @@ export default function App() {
     setSourceFile(null);
     setImageData(null);
     setSvgString(null);
+    setPalette([]);
+    setPaletteEdited(false);
     setStep('import');
   }, []);
 
