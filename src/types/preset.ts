@@ -10,10 +10,10 @@ export interface PresetDefaults {
 }
 
 export const PRESETS: Record<PresetType, PresetDefaults> = {
-  logo: { label: 'Logo', colorCount: 4, traceMode: 'color', removeBg: true },
-  clipart: { label: 'Clipart', colorCount: 4, traceMode: 'color', removeBg: true },
-  illustration: { label: 'Illustration', colorCount: 8, traceMode: 'color', removeBg: false },
-  photo: { label: 'Photo', colorCount: 16, traceMode: 'color', removeBg: false },
+  logo:         { label: 'Logo',         colorCount: 4,  traceMode: 'color', removeBg: true  },
+  clipart:      { label: 'Clipart',      colorCount: 4,  traceMode: 'color', removeBg: true  },
+  illustration: { label: 'Illustration', colorCount: 8,  traceMode: 'color', removeBg: false },
+  photo:        { label: 'Photo',        colorCount: 16, traceMode: 'color', removeBg: false },
 };
 
 export interface AdvancedDefaults {
@@ -26,9 +26,14 @@ export interface AdvancedDefaults {
 }
 
 const ADVANCED_DEFAULTS: Record<PresetType, AdvancedDefaults> = {
-  logo:         { turdSize: 2, alphaMax: 1.0, optTolerance: 0.1, filterSpeckle: 4, pathOverlap: 2, bgTolerance: 20 },
-  clipart:      { turdSize: 4, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 0, pathOverlap: 4, bgTolerance: 25 },
-  illustration: { turdSize: 4, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 0, pathOverlap: 4, bgTolerance: 30 },
+  // pathOverlap: 0 for logo — any dilation causes lower color layers
+  // (e.g. green) to bleed past the top layer (black), creating a color
+  // fringe halo around every interior contour.
+  logo:         { turdSize: 2, alphaMax: 1.0, optTolerance: 0.1, filterSpeckle: 4, pathOverlap: 0, bgTolerance: 20 },
+  // 1 pass is enough to eliminate seams between adjacent same-luminance
+  // layers without visibly bleeding color at edges.
+  clipart:      { turdSize: 4, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 0, pathOverlap: 1, bgTolerance: 25 },
+  illustration: { turdSize: 4, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 0, pathOverlap: 1, bgTolerance: 30 },
   photo:        { turdSize: 2, alphaMax: 1.0, optTolerance: 0.2, filterSpeckle: 4, pathOverlap: 0, bgTolerance: 35 },
 };
 
@@ -44,7 +49,7 @@ export function buildTraceConfig(
   const defaults = ADVANCED_DEFAULTS[preset];
   const adv = { ...defaults, ...overrides };
   return {
-    mode: 'color',
+    mode: PRESETS[preset].traceMode,  // was hardcoded 'color', ignoring preset
     colorPrecision: colorCount,
     turdSize: adv.turdSize,
     alphaMax: adv.alphaMax,
