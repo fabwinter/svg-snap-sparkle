@@ -135,53 +135,59 @@ export default function PreviewCanvas({ originalFile, svgString, svgWidth, svgHe
 
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
-      <div
-        ref={containerRef}
-        className="checkerboard relative overflow-hidden select-none touch-none"
-        style={{ aspectRatio: `${svgWidth} / ${svgHeight}`, maxHeight: 320 }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onWheel={onWheel}
-      >
+      <div className="relative flex items-center justify-center bg-background/40">
         <div
-          className="absolute inset-0"
-          style={{ transform, transformOrigin: 'center center', willChange: 'transform' }}
+          ref={containerRef}
+          className="checkerboard relative overflow-hidden select-none touch-none mx-auto"
+          style={{
+            aspectRatio: `${svgWidth} / ${svgHeight}`,
+            height: 320,
+            maxWidth: '100%',
+          }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onWheel={onWheel}
         >
-          {(viewMode === 'original' || viewMode === 'split') && (
-            <img
-              src={originalUrl}
-              alt="Original"
-              className="absolute inset-0 w-full h-full object-contain"
-              style={viewMode === 'split' ? { clipPath: `inset(0 ${100 - splitPos}% 0 0)` } : undefined}
-              draggable={false}
-            />
-          )}
-          {(viewMode === 'svg' || viewMode === 'split') && (
-            <img
-              src={svgUrl}
-              alt="SVG result"
-              className="absolute inset-0 w-full h-full object-contain"
-              style={viewMode === 'split' ? { clipPath: `inset(0 0 0 ${splitPos}%)` } : undefined}
-              draggable={false}
-            />
+          <div
+            className="absolute inset-0"
+            style={{ transform, transformOrigin: 'center center', willChange: 'transform' }}
+          >
+            {(viewMode === 'original' || viewMode === 'split') && (
+              <img
+                src={originalUrl}
+                alt="Original"
+                className="absolute inset-0 w-full h-full object-contain"
+                style={viewMode === 'split' ? { clipPath: `inset(0 ${100 - splitPos}% 0 0)` } : undefined}
+                draggable={false}
+              />
+            )}
+            {(viewMode === 'svg' || viewMode === 'split') && (
+              <img
+                src={svgUrl}
+                alt="SVG result"
+                className="absolute inset-0 w-full h-full object-contain"
+                style={viewMode === 'split' ? { clipPath: `inset(0 0 0 ${splitPos}%)` } : undefined}
+                draggable={false}
+              />
+            )}
+          </div>
+
+          {viewMode === 'split' && (
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-foreground/50 cursor-col-resize z-10"
+              style={{ left: `${splitPos}%` }}
+              onPointerDown={handleSplitPointerDown}
+            >
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-foreground/80 border-2 border-background flex items-center justify-center">
+                <Maximize2 className="w-3 h-3 text-background" />
+              </div>
+            </div>
           )}
         </div>
 
-        {viewMode === 'split' && (
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-foreground/50 cursor-col-resize z-10"
-            style={{ left: `${splitPos}%` }}
-            onPointerDown={handleSplitPointerDown}
-          >
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-foreground/80 border-2 border-background flex items-center justify-center">
-              <Maximize2 className="w-3 h-3 text-background" />
-            </div>
-          </div>
-        )}
-
-        {/* Zoom controls */}
+        {/* Zoom controls — anchored to the right of the card, not the image */}
         <div className="absolute bottom-2 right-2 z-10 flex flex-col gap-1 bg-background/80 backdrop-blur rounded-md border border-border p-1 shadow-sm">
           <button
             type="button"
