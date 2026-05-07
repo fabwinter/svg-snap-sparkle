@@ -163,6 +163,16 @@ export default function SettingsPanel({
         </span>
       </label>
 
+      <label className="flex items-center gap-3 cursor-pointer group">
+        <Checkbox
+          checked={cutout}
+          onCheckedChange={(v) => onCutoutChange(v === true)}
+        />
+        <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+          Cutout mode (Cricut: non-overlapping layers)
+        </span>
+      </label>
+
       {/* Advanced settings */}
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full">
