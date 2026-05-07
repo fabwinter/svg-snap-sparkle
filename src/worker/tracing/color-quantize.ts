@@ -170,6 +170,20 @@ function runQuantization(
   }
 
   clusters.sort((a, b) => b.count - a.count);
+
+  // Snap low-chroma clusters to neutral gray so JPEG fringe (slight green/red
+  // tints in near-black/near-white pixels) collapses into black/white instead
+  // of forming a separate coloured cluster that surrounds dark detail.
+  const CHROMA_SNAP = 18;
+  for (const c of clusters) {
+    const [r, g, b] = c.color;
+    const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+    if (chroma < CHROMA_SNAP) {
+      const l = Math.round((r + g + b) / 3);
+      c.color = [l, l, l];
+    }
+  }
+
   const kept = clusters.slice(0, maxColors);
 
   const primaries: [number, number, number][] = [];
