@@ -141,8 +141,10 @@ export default function PreviewCanvas({ originalFile, svgString, svgWidth, svgHe
           className="checkerboard relative overflow-hidden select-none touch-none mx-auto"
           style={{
             aspectRatio: `${svgWidth} / ${svgHeight}`,
-            height: 320,
+            maxHeight: 320,
             maxWidth: '100%',
+            width: svgWidth >= svgHeight ? '100%' : 'auto',
+            height: svgWidth >= svgHeight ? 'auto' : 320,
           }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
