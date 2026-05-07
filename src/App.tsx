@@ -83,6 +83,7 @@ export default function App() {
         traceConfig.palette = activePalette.map(hexToRgb);
         traceConfig.colorPrecision = activePalette.length;
       }
+      traceConfig.cutout = cutout;
       const maskConfig = buildMaskConfig(removeBg, advanced.bgTolerance);
       const result = await workerClient.current.process(
         imageData, maskConfig, DEFAULT_CLEANUP, traceConfig,
