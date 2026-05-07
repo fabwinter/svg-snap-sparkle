@@ -180,9 +180,17 @@ export class PotraceTracer implements ITracer {
     const skipBg = config.skipBackground && layers.length > 1;
     const firstTracedLayer = skipBg ? 1 : 0;
 
-    // Build stacked masks (each = union of this layer + all layers above it)
+    // Cutout mode (Cricut): each layer is its OWN mask only — no stacking,
+    // no overlap. Produces clean separable cut paths per colour.
+    const cutout = !!config.cutout;
+
+    // Build masks. Stacked (default) = union of this + all above. Cutout = own only.
     const stackedMasks: Uint8Array[] = [];
     for (let li = firstTracedLayer; li < layers.length; li++) {
+      if (cutout) {
+        stackedMasks.push(new Uint8Array(layers[li].mask));
+        continue;
+      }
       const stacked = new Uint8Array(width * height);
       for (let lj = li; lj < layers.length; lj++) {
         const src = layers[lj].mask;
@@ -193,16 +201,9 @@ export class PotraceTracer implements ITracer {
       stackedMasks.push(stacked);
     }
 
-    // Dilate every stacked mask. Non-topmost dilation eliminates seams between
-    // colours; topmost dilation lets the darkest layer (drawn last) eat into the
-    // anti-aliased fringe of intermediate colours, preventing halos around
-    // dark lines (e.g. green fringe around black detail in the Starbucks logo).
-    const dilatePasses = config.pathOverlap ?? 3;
-    // Only dilate the topmost (darkest) layer when there are intermediate
-    // colours that could leave anti-aliased halos. For 2-colour (B&W) traces,
-    // dilating the top layer erodes fine detail (eyes, nose, lips) without
-    // any fringe to suppress.
-    const topmostExtra = layers.length > 2 ? 1 : 0;
+    // Dilation: skipped entirely in cutout mode (cuts must not overlap).
+    const dilatePasses = cutout ? 0 : (config.pathOverlap ?? 3);
+    const topmostExtra = cutout ? 0 : (layers.length > 2 ? 1 : 0);
     for (let si = 0; si < stackedMasks.length; si++) {
       const passes = si < stackedMasks.length - 1 ? dilatePasses : topmostExtra;
       let m = stackedMasks[si];
