@@ -19,12 +19,14 @@ interface SettingsPanelProps {
   preset: PresetType;
   colorCount: number;
   removeBg: boolean;
+  cutout: boolean;
   hasImage: boolean;
   advanced: AdvancedSettings;
   palette: string[];
   onPresetChange: (p: PresetType) => void;
   onColorCountChange: (n: number) => void;
   onRemoveBgChange: (v: boolean) => void;
+  onCutoutChange: (v: boolean) => void;
   onAdvancedChange: (a: AdvancedSettings) => void;
   onPaletteChange: (next: string[]) => void;
   onConvert: () => void;
