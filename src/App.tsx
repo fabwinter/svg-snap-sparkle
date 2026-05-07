@@ -22,6 +22,7 @@ export default function App() {
   const [preset, setPreset] = useState<PresetType>('logo');
   const [colorCount, setColorCount] = useState(2);
   const [removeBg, setRemoveBg] = useState(true);
+  const [cutout, setCutout] = useState(false);
   const [advanced, setAdvanced] = useState<AdvancedSettings>(() => getDefaultAdvanced('logo'));
   const [svgString, setSvgString] = useState<string | null>(null);
   const [svgWidth, setSvgWidth] = useState(0);
