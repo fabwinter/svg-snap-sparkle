@@ -145,7 +145,10 @@ function runQuantization(
       count: b.count,
     }));
 
-  const MERGE_DIST_SQ = 40 * 40 * 3;
+  // Tightened from 40→28: collapses fringe micro-clusters that are
+  // perceptually close to a dominant color, while keeping legitimately
+  // distinct colors (e.g. Starbucks green vs black) from merging.
+  const MERGE_DIST_SQ = 28 * 28 * 3;
   let merged = true;
   while (merged) {
     merged = false;
@@ -171,10 +174,10 @@ function runQuantization(
 
   clusters.sort((a, b) => b.count - a.count);
 
-  // Snap low-chroma clusters to neutral gray so JPEG fringe (slight green/red
-  // tints in near-black/near-white pixels) collapses into black/white instead
-  // of forming a separate coloured cluster that surrounds dark detail.
-  const CHROMA_SNAP = 18;
+  // Raised from 18→30: catches washed-out green/teal fringe clusters
+  // (chroma ~20–25) that previously slipped through and formed a separate
+  // coloured SVG layer around the logo edge.
+  const CHROMA_SNAP = 30;
   for (const c of clusters) {
     const [r, g, b] = c.color;
     const chroma = Math.max(r, g, b) - Math.min(r, g, b);
@@ -193,8 +196,6 @@ function runQuantization(
     primaries.push(cluster.color);
     finalColors.push(cluster.color);
   }
-  // Backfill: if the blend-filter dropped colours, top up from remaining
-  // clusters (allowing blends) so the palette length matches the user request.
   if (finalColors.length < maxColors) {
     for (const cluster of clusters) {
       if (finalColors.length >= maxColors) break;
@@ -255,8 +256,6 @@ export function extractColorLayers(
     masks[idx][i] = 255;
   }
 
-  // When a palette is user-provided, keep all colors even if tiny so the user
-  // sees the effect of their additions.
   const minPixels = paletteOverride ? 0 : Math.max(50, opaqueCount * 0.005);
 
   const layers: ColorLayer[] = [];

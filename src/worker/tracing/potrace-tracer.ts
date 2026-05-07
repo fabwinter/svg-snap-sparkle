@@ -29,7 +29,6 @@ export async function initPotrace(): Promise<void> {
  * errors when the WASM module's memory grows and invalidates typed array views.
  */
 function makeFakeImageData(pixels: Uint8ClampedArray, w: number, h: number) {
-  // Always create a fresh copy so the buffer is never shared
   const copy = new Uint8ClampedArray(w * h * 4);
   copy.set(pixels);
   return { data: copy, width: w, height: h };
@@ -44,14 +43,12 @@ async function traceMask(
 ): Promise<string> {
   const mod = potraceModule;
 
-  // Skip empty masks — no foreground pixels to trace
   let hasForeground = false;
   for (let i = 0; i < mask.length; i++) {
     if (mask[i] === 255) { hasForeground = true; break; }
   }
   if (!hasForeground) return '';
 
-  // Convert binary mask to RGBA: foreground=black, background=white
   const pixels = new Uint8ClampedArray(w * h * 4);
   for (let i = 0; i < w * h; i++) {
     const off = i * 4;
@@ -100,6 +97,13 @@ function rgbToHex(r: number, g: number, b: number): string {
 
 /**
  * Snap near-white and near-black palette colours to pure white/black.
+ *
+ * Broadened vs. original to catch washed-out pale-green/teal edge composites
+ * that sit around l≈0.65 with low chroma and were previously assigned a
+ * faintly-coloured SVG fill instead of being snapped to white.
+ *
+ * Thresholds:  light l > 0.60 (was 0.70)  |  dark l < 0.30 (was 0.22)
+ *              chroma d < 0.20 unified     (was 0.12 light / 0.15 dark)
  */
 export function normalizeExtremeColor(
   r: number,
@@ -114,8 +118,8 @@ export function normalizeExtremeColor(
   const l = (max + min) / 2;
   const d = max - min;
 
-  if (l > 0.70 && d < 0.12) return [255, 255, 255];
-  if (l < 0.22 && d < 0.15) return [0, 0, 0];
+  if (l > 0.60 && d < 0.20) return [255, 255, 255];
+  if (l < 0.30 && d < 0.20) return [0, 0, 0];
   return [r, g, b];
 }
 
@@ -125,7 +129,6 @@ export class PotraceTracer implements ITracer {
 
     const { data, width, height } = image;
 
-    // Validate input
     if (width <= 0 || height <= 0 || data.length !== width * height * 4) {
       return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"></svg>`;
     }
@@ -170,9 +173,6 @@ export class PotraceTracer implements ITracer {
       return this.traceOutline(data, width, height, config);
     }
 
-    // Render order: lightest at the bottom, darkest on top.
-    // This guarantees dark detail (logo lines, text) sits above lighter
-    // background colours regardless of pixel count.
     const luminance = (c: [number, number, number]) =>
       0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
     layers.sort((a, b) => luminance(b.color) - luminance(a.color));
@@ -180,11 +180,8 @@ export class PotraceTracer implements ITracer {
     const skipBg = config.skipBackground && layers.length > 1;
     const firstTracedLayer = skipBg ? 1 : 0;
 
-    // Cutout mode (Cricut): each layer is its OWN mask only — no stacking,
-    // no overlap. Produces clean separable cut paths per colour.
     const cutout = !!config.cutout;
 
-    // Build masks. Stacked (default) = union of this + all above. Cutout = own only.
     const stackedMasks: Uint8Array[] = [];
     for (let li = firstTracedLayer; li < layers.length; li++) {
       if (cutout) {
@@ -201,7 +198,6 @@ export class PotraceTracer implements ITracer {
       stackedMasks.push(stacked);
     }
 
-    // Dilation: skipped entirely in cutout mode (cuts must not overlap).
     const dilatePasses = cutout ? 0 : (config.pathOverlap ?? 3);
     const topmostExtra = cutout ? 0 : (layers.length > 2 ? 1 : 0);
     for (let si = 0; si < stackedMasks.length; si++) {
@@ -219,7 +215,6 @@ export class PotraceTracer implements ITracer {
       coloredPaths.push(`<rect width="100%" height="100%" fill="${bgHex}"/>`);
     }
 
-    // Trace each layer
     for (let li = firstTracedLayer; li < layers.length; li++) {
       const layer = layers[li];
       const [nr, ng, nb] = normalizeExtremeColor(layer.color[0], layer.color[1], layer.color[2]);

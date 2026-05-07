@@ -6,7 +6,7 @@
  * 1. Generate mask from image (alpha / solid-color / none)
  * 2. Clean mask (morph open, speck removal, hole fill, morph close, smooth)
  * 3. Apply mask to image (bg → transparent)
- * 3e. Desaturate semi-transparent edge pixels (prevents color fringing)
+ * 3e. Suppress edge fringe: two-pass desaturate + neighbor-snap
  * 4. Trace masked image (Potrace)
  * 5. Post-process SVG (strip bg rect, fix viewBox to original size)
  */
@@ -110,30 +110,67 @@ function fixSvgDimensions(svg: string, origW: number, origH: number, upW: number
 }
 
 /**
- * Desaturate semi-transparent edge pixels to prevent color fringing in the
- * traced SVG output.
+ * Suppress color fringing on anti-aliased mask edges.
  *
- * Anti-aliased edges between a colored region (e.g. the Starbucks green ring)
- * and a transparent background produce pixels that are partially opaque and
- * still carry the original hue. When Potrace composites those pixels onto
- * white it sees a pale-green mid-tone rather than near-white, and either
- * traces it as a separate color layer or leaks a colored outline into the
- * outline-mode result.
+ * Two-pass approach:
  *
- * Fix: for any pixel whose alpha is in the semi-transparent range (1–199)
- * replace its RGB with the luminance-weighted grayscale value. Fully opaque
- * pixels (200–255) are left untouched so interior colors are preserved.
+ * Pass 1 — Desaturate: any pixel with alpha 1–229 has its RGB replaced by
+ * its luminance-weighted grayscale. This converts pale-green / pale-teal
+ * edge composites to neutral gray so Potrace doesn't pick them up as a
+ * separate color cluster. Threshold raised from 200 → 230 to catch the
+ * near-opaque fringe pixels that the previous version missed.
+ *
+ * Pass 2 — Neighbor snap: for any remaining semi-transparent pixel (1–229)
+ * whose chroma is still above a small threshold (can happen when the pixel
+ * is strongly saturated), find the nearest fully-opaque 4-connected neighbor
+ * and copy its luminance. This eliminates single-pixel-wide green halos that
+ * survive pass 1.
+ *
+ * Fully-opaque pixels (alpha ≥ 230) are untouched so interior colors
+ * (logo greens, blacks, whites) are preserved exactly.
  */
-function desaturateEdgePixels(rgba: Uint8ClampedArray): void {
+export function suppressEdgeFringe(rgba: Uint8ClampedArray, w: number, h: number): void {
+  // Pass 1: desaturate all semi-transparent pixels
   for (let i = 0; i < rgba.length; i += 4) {
     const a = rgba[i + 3];
-    if (a > 0 && a < 200) {
+    if (a > 0 && a < 230) {
       const gray = Math.round(
         0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2],
       );
       rgba[i]     = gray;
       rgba[i + 1] = gray;
       rgba[i + 2] = gray;
+    }
+  }
+
+  // Pass 2: neighbor-snap any semi-transparent pixel that still has chroma
+  const CHROMA_RESIDUAL = 4;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const a = rgba[i + 3];
+      if (a === 0 || a >= 230) continue;
+
+      const chroma = Math.max(rgba[i], rgba[i + 1], rgba[i + 2])
+        - Math.min(rgba[i], rgba[i + 1], rgba[i + 2]);
+      if (chroma <= CHROMA_RESIDUAL) continue;
+
+      const neighbors = [
+        y > 0     ? ((y - 1) * w + x) * 4 : -1,
+        y < h - 1 ? ((y + 1) * w + x) * 4 : -1,
+        x > 0     ? (y * w + x - 1) * 4   : -1,
+        x < w - 1 ? (y * w + x + 1) * 4   : -1,
+      ];
+      for (const ni of neighbors) {
+        if (ni < 0 || rgba[ni + 3] < 230) continue;
+        const gray = Math.round(
+          0.299 * rgba[ni] + 0.587 * rgba[ni + 1] + 0.114 * rgba[ni + 2],
+        );
+        rgba[i]     = gray;
+        rgba[i + 1] = gray;
+        rgba[i + 2] = gray;
+        break;
+      }
     }
   }
 }
@@ -151,9 +188,6 @@ export async function runPipeline(
   const origH = h;
 
   // ── Step 0: Scale image as large as possible before masking/tracing ──
-  // Upscale to fill the maximum trace budget so detail is preserved
-  // through mask cleanup and vectorization. If the image is already
-  // larger than the budget, this becomes a downscale.
   const maxDim = Math.max(w, h);
   const scale = Math.min(
     MAX_TRACE_DIMENSION / maxDim,
@@ -214,12 +248,10 @@ export async function runPipeline(
     callbacks.onProgress('Applying mask', 55);
     maskedRgba = applyMaskToRgba(rgba, cleanedMask, w, h);
 
-    // ── Step 3e: Desaturate edge pixels ─────────────────────────────
-    // Semi-transparent anti-aliased edge pixels retain their original hue
-    // (e.g. green from the Starbucks ring) and cause colored fringing in
-    // the traced SVG. Converting them to grayscale eliminates the fringe
-    // without affecting fully-opaque interior pixels.
-    desaturateEdgePixels(maskedRgba);
+    // ── Step 3e: Suppress edge fringe ───────────────────────────────
+    // Two-pass desaturate + neighbor-snap removes stray hue from
+    // anti-aliased mask edges before they reach Potrace.
+    suppressEdgeFringe(maskedRgba, w, h);
   }
 
   // ── Step 3d: B&W brightness shift (Line Art threshold slider) ────
