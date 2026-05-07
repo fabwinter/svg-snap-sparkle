@@ -6,7 +6,9 @@
  * 1. Generate mask from image (alpha / solid-color / none)
  * 2. Clean mask (morph open, speck removal, hole fill, morph close, smooth)
  * 3. Apply mask to image (bg → transparent)
- * 3e. Suppress edge fringe: two-pass desaturate + neighbor-snap
+ * 3e. Suppress edge fringe: two-pass desaturate + neighbor-snap (alpha<230)
+ * 3f. Kill boundary chroma: desaturate light greenish pixels at mask edge
+ *     (catches fully-opaque JPEG compression artifacts that survive 3e)
  * 4. Trace masked image (Potrace)
  * 5. Post-process SVG (strip bg rect, fix viewBox to original size)
  */
@@ -175,6 +177,79 @@ export function suppressEdgeFringe(rgba: Uint8ClampedArray, w: number, h: number
   }
 }
 
+/**
+ * Kill chroma on light, green-dominant pixels at the mask boundary.
+ *
+ * JPEG compression leaves fully-opaque (alpha=255) greenish pixels just
+ * inside the mask edge. These are never caught by suppressEdgeFringe
+ * (which only acts on alpha<230) but they are pale enough that Potrace
+ * traces them as a distinct light region — producing a green halo even
+ * when the rest of the pipeline is clean.
+ *
+ * Strategy: a "boundary pixel" is any fully-opaque pixel that has at
+ * least one fully-transparent 4-connected neighbor. For each boundary
+ * pixel we check:
+ *   1. Luminance > 140: the pixel is light (fringe is always a pale wash,
+ *      not a deep saturated green which would be real logo content)
+ *   2. Green channel leads red and blue by > 8: indicates a greenish cast
+ * If both conditions are met, the pixel is desaturated to grayscale.
+ *
+ * We run multiple erosion passes (default 3) so the chroma-kill extends
+ * inward enough to cover thick JPEG artifact bands.
+ */
+export function killBoundaryChroma(
+  rgba: Uint8ClampedArray,
+  w: number,
+  h: number,
+  passes: number = 3,
+): void {
+  // Build a boolean map: true = fully transparent
+  const transparent = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    if (rgba[i * 4 + 3] === 0) transparent[i] = 1;
+  }
+
+  // current "boundary" = opaque pixels adjacent to transparent ones
+  // We erode this boundary inward for `passes` iterations
+  let boundary = new Uint8Array(w * h);
+
+  for (let pass = 0; pass < passes; pass++) {
+    // Build boundary from current transparent map
+    boundary.fill(0);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x;
+        if (transparent[idx]) continue; // skip transparent pixels
+        // Is any 4-connected neighbor transparent?
+        const hasTransparentNeighbor =
+          (y > 0     && transparent[(y - 1) * w + x]) ||
+          (y < h - 1 && transparent[(y + 1) * w + x]) ||
+          (x > 0     && transparent[y * w + x - 1])   ||
+          (x < w - 1 && transparent[y * w + x + 1]);
+        if (hasTransparentNeighbor) boundary[idx] = 1;
+      }
+    }
+
+    // Desaturate light greenish boundary pixels and mark them transparent
+    // for the next pass so we erode further inward
+    for (let i = 0; i < w * h; i++) {
+      if (!boundary[i]) continue;
+      const off = i * 4;
+      const r = rgba[off], g = rgba[off + 1], b = rgba[off + 2];
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+      const greenLead = g - Math.max(r, b);
+      if (luma > 140 && greenLead > 8) {
+        const gray = Math.round(luma);
+        rgba[off]     = gray;
+        rgba[off + 1] = gray;
+        rgba[off + 2] = gray;
+        // Mark as "transparent" for next pass so erosion continues inward
+        transparent[i] = 1;
+      }
+    }
+  }
+}
+
 export async function runPipeline(
   rgba: Uint8ClampedArray,
   w: number,
@@ -248,10 +323,15 @@ export async function runPipeline(
     callbacks.onProgress('Applying mask', 55);
     maskedRgba = applyMaskToRgba(rgba, cleanedMask, w, h);
 
-    // ── Step 3e: Suppress edge fringe ───────────────────────────────
-    // Two-pass desaturate + neighbor-snap removes stray hue from
-    // anti-aliased mask edges before they reach Potrace.
+    // ── Step 3e: Suppress edge fringe (semi-transparent pixels) ──────
+    // Desaturates + neighbor-snaps pixels with alpha 1–229.
     suppressEdgeFringe(maskedRgba, w, h);
+
+    // ── Step 3f: Kill boundary chroma (JPEG compression artifacts) ───
+    // JPEG leaves fully-opaque greenish pixels just inside the mask
+    // boundary. Erodes inward 3 passes, desaturating light green-dominant
+    // boundary pixels that the alpha-based pass above cannot reach.
+    killBoundaryChroma(maskedRgba, w, h, 3);
   }
 
   // ── Step 3d: B&W brightness shift (Line Art threshold slider) ────
