@@ -1,8 +1,9 @@
 /**
  * Potrace WASM — bitmap tracing (outline + color).
  *
- * Outline mode: composites onto white, traces dark outlines → single-color SVG.
- * Color mode: quantizes image into color layers, traces each layer separately.
+ * Outline mode: composites onto white, applies hard luminance threshold to
+ *               remove anti-alias ramp, then traces dark outlines → single-color SVG.
+ * Color mode:   quantizes image into color layers, traces each layer separately.
  */
 
 import type { TraceConfig } from '../../types/pipeline';
@@ -123,6 +124,39 @@ export function normalizeExtremeColor(
   return [r, g, b];
 }
 
+/**
+ * Apply a hard luminance threshold to a white-composited RGBA image.
+ *
+ * After compositeOnWhite, mask edges produce a smooth gray-to-white ramp
+ * (e.g. a pixel that was rgba(0,128,0,180) becomes ~rgb(91,182,91) which
+ * composites to ~rgb(168,211,168) — a light greenish mid-tone). Potrace's
+ * posterizelevel:2 binarisation then cuts through this ramp and traces
+ * the gray band as a closed region, producing a colored halo.
+ *
+ * This function snaps every pixel whose perceptual luminance exceeds
+ * `threshold` (0–255, default 200) to pure white (255,255,255,255),
+ * collapsing the entire anti-alias gradient to white before Potrace sees
+ * it. Dark logo content (luma < threshold) is untouched.
+ *
+ * Default threshold of 200 was chosen to be well above the brightest
+ * legitimate gray in JPEG-compressed logos (~160) while being safely
+ * below pure white (255), so the snap only hits the fringe band.
+ */
+export function applyLuminanceThreshold(
+  rgba: Uint8ClampedArray,
+  threshold: number = 200,
+): void {
+  for (let i = 0; i < rgba.length; i += 4) {
+    const luma = 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
+    if (luma >= threshold) {
+      rgba[i]     = 255;
+      rgba[i + 1] = 255;
+      rgba[i + 2] = 255;
+      rgba[i + 3] = 255;
+    }
+  }
+}
+
 export class PotraceTracer implements ITracer {
   async trace(image: WorkerImageData, config: TraceConfig): Promise<string> {
     if (!potraceModule) await initPotrace();
@@ -148,6 +182,18 @@ export class PotraceTracer implements ITracer {
   ): Promise<string> {
     const mod = potraceModule;
     const whiteComposite = compositeOnWhite(data, width, height);
+
+    // Snap the anti-alias ramp at mask edges to pure white before tracing.
+    // The ramp (gray pixels that are lighter than the logo content but
+    // darker than pure white) would otherwise be traced by Potrace as a
+    // closed region, producing a colored fringe halo around the output.
+    // bwThreshold is the line-art slider (default 128 → maps to pixel
+    // luminance threshold 200 after composite).
+    const pixelThreshold = config.bwThreshold !== undefined
+      ? Math.round(128 + (config.bwThreshold - 128) * 0.57)
+      : 200;
+    applyLuminanceThreshold(whiteComposite, pixelThreshold);
+
     const imageData = makeFakeImageData(whiteComposite, width, height);
 
     return mod.potrace(imageData, {
