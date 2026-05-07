@@ -32,6 +32,14 @@ export function applyMaskToRgba(
  * Composite masked RGBA onto a solid white background.
  * Critical for Potrace: transparent pixels must become WHITE (not black)
  * so that Potrace traces the dark foreground, not the background.
+ *
+ * Anti-fringe: semi-transparent edge pixels (alpha < 230) are desaturated
+ * to their luminance-weighted grayscale BEFORE blending. Without this,
+ * a green edge pixel at alpha=180 composites to ~rgb(155,228,155) — a
+ * pale green that Potrace traces as a separate mid-tone region, producing
+ * a visible green halo in the SVG output. Desaturating first means the
+ * composite always yields a neutral gray that Potrace treats as smooth
+ * anti-aliasing rather than a hue boundary.
  */
 export function compositeOnWhite(
   rgba: Uint8ClampedArray,
@@ -41,10 +49,26 @@ export function compositeOnWhite(
   const out = new Uint8ClampedArray(w * h * 4);
   for (let i = 0; i < w * h; i++) {
     const off = i * 4;
-    const a = rgba[off + 3] / 255;
-    out[off] = Math.round(rgba[off] * a + 255 * (1 - a));
-    out[off + 1] = Math.round(rgba[off + 1] * a + 255 * (1 - a));
-    out[off + 2] = Math.round(rgba[off + 2] * a + 255 * (1 - a));
+    const a = rgba[off + 3];
+    const alpha = a / 255;
+
+    let r = rgba[off];
+    let g = rgba[off + 1];
+    let b = rgba[off + 2];
+
+    // Desaturate semi-transparent edge pixels before compositing.
+    // Fully-opaque pixels (a >= 230) keep their original color so
+    // interior logo colors are preserved exactly.
+    if (a > 0 && a < 230) {
+      const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      r = gray;
+      g = gray;
+      b = gray;
+    }
+
+    out[off]     = Math.round(r * alpha + 255 * (1 - alpha));
+    out[off + 1] = Math.round(g * alpha + 255 * (1 - alpha));
+    out[off + 2] = Math.round(b * alpha + 255 * (1 - alpha));
     out[off + 3] = 255;
   }
   return out;
