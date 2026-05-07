@@ -47,6 +47,8 @@ export interface TraceConfig {
   bwThreshold?: number;
   /** Optional explicit palette to use instead of auto-detection */
   palette?: [number, number, number][];
+  /** Cricut cutout mode: each colour traced as non-overlapping cut layer */
+  cutout?: boolean;
 }
 
 /** Full processing request sent to the worker */

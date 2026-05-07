@@ -22,6 +22,7 @@ export default function App() {
   const [preset, setPreset] = useState<PresetType>('logo');
   const [colorCount, setColorCount] = useState(2);
   const [removeBg, setRemoveBg] = useState(true);
+  const [cutout, setCutout] = useState(false);
   const [advanced, setAdvanced] = useState<AdvancedSettings>(() => getDefaultAdvanced('logo'));
   const [svgString, setSvgString] = useState<string | null>(null);
   const [svgWidth, setSvgWidth] = useState(0);
@@ -82,6 +83,7 @@ export default function App() {
         traceConfig.palette = activePalette.map(hexToRgb);
         traceConfig.colorPrecision = activePalette.length;
       }
+      traceConfig.cutout = cutout;
       const maskConfig = buildMaskConfig(removeBg, advanced.bgTolerance);
       const result = await workerClient.current.process(
         imageData, maskConfig, DEFAULT_CLEANUP, traceConfig,
@@ -94,7 +96,7 @@ export default function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     }
-  }, [imageData, preset, colorCount, removeBg, advanced, palette]);
+  }, [imageData, preset, colorCount, removeBg, advanced, palette, cutout]);
 
   const handleRerun = useCallback(() => {
     setSvgString(null);
@@ -141,28 +143,37 @@ export default function App() {
               onReset={handleReset}
             />
           )}
+          {/* Import-different-image button just below canvas (preview step) */}
+          {step === 'preview' && sourceFile && (
+            <button
+              onClick={handleReset}
+              className="mt-3 w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-2"
+            >
+              Import different image
+            </button>
+          )}
         </div>
 
         <div className="space-y-6 pt-2">
-          {/* Step: Settings */}
           {(step === 'settings' || step === 'processing' || step === 'preview') && (
             <SettingsPanel
               preset={preset}
               colorCount={colorCount}
               removeBg={removeBg}
+              cutout={cutout}
               hasImage={!!imageData}
               advanced={advanced}
               palette={palette}
               onPresetChange={handlePresetChange}
               onColorCountChange={handleColorCountChange}
               onRemoveBgChange={setRemoveBg}
+              onCutoutChange={setCutout}
               onAdvancedChange={setAdvanced}
               onPaletteChange={handlePaletteChange}
               onConvert={handleConvert}
             />
           )}
 
-          {/* Step: Processing */}
           {step === 'processing' && (
             <ProcessingState
               stage={progressStage}
@@ -172,13 +183,11 @@ export default function App() {
             />
           )}
 
-          {/* Action bar (preview only) */}
           {step === 'preview' && svgString && sourceFile && (
             <ActionBar
               svgString={svgString}
               originalFilename={sourceFile.name}
               onRerun={handleRerun}
-              onNewImage={handleReset}
             />
           )}
         </div>

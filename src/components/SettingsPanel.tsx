@@ -19,12 +19,14 @@ interface SettingsPanelProps {
   preset: PresetType;
   colorCount: number;
   removeBg: boolean;
+  cutout: boolean;
   hasImage: boolean;
   advanced: AdvancedSettings;
   palette: string[];
   onPresetChange: (p: PresetType) => void;
   onColorCountChange: (n: number) => void;
   onRemoveBgChange: (v: boolean) => void;
+  onCutoutChange: (v: boolean) => void;
   onAdvancedChange: (a: AdvancedSettings) => void;
   onPaletteChange: (next: string[]) => void;
   onConvert: () => void;
@@ -82,9 +84,9 @@ const ADVANCED_FIELDS: {
 ];
 
 export default function SettingsPanel({
-  preset, colorCount, removeBg, hasImage, advanced, palette,
-  onPresetChange, onColorCountChange, onRemoveBgChange, onAdvancedChange,
-  onPaletteChange, onConvert,
+  preset, colorCount, removeBg, cutout, hasImage, advanced, palette,
+  onPresetChange, onColorCountChange, onRemoveBgChange, onCutoutChange,
+  onAdvancedChange, onPaletteChange, onConvert,
 }: SettingsPanelProps) {
   const [open, setOpen] = useState(false);
 
@@ -158,6 +160,16 @@ export default function SettingsPanel({
         />
         <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
           Remove background before vectorising
+        </span>
+      </label>
+
+      <label className="flex items-center gap-3 cursor-pointer group">
+        <Checkbox
+          checked={cutout}
+          onCheckedChange={(v) => onCutoutChange(v === true)}
+        />
+        <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+          Cutout mode (Cricut: non-overlapping layers)
         </span>
       </label>
 
