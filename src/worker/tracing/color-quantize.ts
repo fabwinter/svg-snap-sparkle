@@ -205,16 +205,6 @@ function runQuantization(
   return { finalColors, opaqueCount };
 }
 
-// Legacy stub kept for diff stability — real return is above.
-function _unused_runQuantization_tail() {
-  const finalColors: [number, number, number][] = [];
-  for (const cluster of kept) {
-    if (isLinearBlend(cluster.color, primaries, 25)) continue;
-    primaries.push(cluster.color);
-    finalColors.push(cluster.color);
-  }
-  return { finalColors, opaqueCount };
-}
 
 /** Extract a representative palette. Pure analysis. */
 export function extractPalette(
