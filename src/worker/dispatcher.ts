@@ -6,6 +6,7 @@
  * 1. Generate mask from image (alpha / solid-color / none)
  * 2. Clean mask (morph open, speck removal, hole fill, morph close, smooth)
  * 3. Apply mask to image (bg → transparent)
+ * 3e. Desaturate semi-transparent edge pixels (prevents color fringing)
  * 4. Trace masked image (Potrace)
  * 5. Post-process SVG (strip bg rect, fix viewBox to original size)
  */
@@ -22,7 +23,7 @@ import { stripBackgroundRect } from './tracing/svg-builder';
 const MIN_DIMENSION = 512;
 
 /** Maximum trace size. esm-potrace-wasm passes RGBA through WASM stackAlloc;
- *  mobile Safari throws “Offset should not be negative” when that array is too large. */
+ *  mobile Safari throws "Offset should not be negative" when that array is too large. */
 const MAX_TRACE_DIMENSION = 1600;
 const MAX_TRACE_PIXELS = 1_100_000;
 
@@ -108,6 +109,35 @@ function fixSvgDimensions(svg: string, origW: number, origH: number, upW: number
   return svg;
 }
 
+/**
+ * Desaturate semi-transparent edge pixels to prevent color fringing in the
+ * traced SVG output.
+ *
+ * Anti-aliased edges between a colored region (e.g. the Starbucks green ring)
+ * and a transparent background produce pixels that are partially opaque and
+ * still carry the original hue. When Potrace composites those pixels onto
+ * white it sees a pale-green mid-tone rather than near-white, and either
+ * traces it as a separate color layer or leaks a colored outline into the
+ * outline-mode result.
+ *
+ * Fix: for any pixel whose alpha is in the semi-transparent range (1–199)
+ * replace its RGB with the luminance-weighted grayscale value. Fully opaque
+ * pixels (200–255) are left untouched so interior colors are preserved.
+ */
+function desaturateEdgePixels(rgba: Uint8ClampedArray): void {
+  for (let i = 0; i < rgba.length; i += 4) {
+    const a = rgba[i + 3];
+    if (a > 0 && a < 200) {
+      const gray = Math.round(
+        0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2],
+      );
+      rgba[i]     = gray;
+      rgba[i + 1] = gray;
+      rgba[i + 2] = gray;
+    }
+  }
+}
+
 export async function runPipeline(
   rgba: Uint8ClampedArray,
   w: number,
@@ -183,6 +213,13 @@ export async function runPipeline(
     // ── Step 3: Apply mask ──────────────────────────────────────────
     callbacks.onProgress('Applying mask', 55);
     maskedRgba = applyMaskToRgba(rgba, cleanedMask, w, h);
+
+    // ── Step 3e: Desaturate edge pixels ─────────────────────────────
+    // Semi-transparent anti-aliased edge pixels retain their original hue
+    // (e.g. green from the Starbucks ring) and cause colored fringing in
+    // the traced SVG. Converting them to grayscale eliminates the fringe
+    // without affecting fully-opaque interior pixels.
+    desaturateEdgePixels(maskedRgba);
   }
 
   // ── Step 3d: B&W brightness shift (Line Art threshold slider) ────
