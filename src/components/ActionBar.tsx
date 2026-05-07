@@ -1,13 +1,12 @@
-import { Download, RotateCcw, ImagePlus } from 'lucide-react';
+import { Download, RotateCcw } from 'lucide-react';
 
 interface ActionBarProps {
   svgString: string;
   originalFilename: string;
   onRerun: () => void;
-  onNewImage: () => void;
 }
 
-export default function ActionBar({ svgString, originalFilename, onRerun, onNewImage }: ActionBarProps) {
+export default function ActionBar({ svgString, originalFilename, onRerun }: ActionBarProps) {
   const handleDownload = () => {
     const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -22,40 +21,20 @@ export default function ActionBar({ svgString, originalFilename, onRerun, onNewI
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex gap-3">
-        <button
-          onClick={handleDownload}
-          className="
-            flex-1 py-3 rounded-lg font-medium text-sm
-            bg-primary text-primary-foreground
-            hover:bg-primary/90 transition-all
-            flex items-center justify-center gap-2
-            shadow-lg shadow-primary/20
-          "
-        >
-          <Download className="w-4 h-4" />
-          Download SVG
-        </button>
-        <button
-          onClick={onRerun}
-          className="
-            flex-1 py-3 rounded-lg font-medium text-sm
-            bg-secondary text-foreground
-            hover:bg-secondary/80 transition-all
-            flex items-center justify-center gap-2
-          "
-        >
-          <RotateCcw className="w-4 h-4" />
-          Re-run
-        </button>
-      </div>
+    <div className="flex gap-3">
       <button
-        onClick={onNewImage}
-        className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-1.5 py-2"
+        onClick={handleDownload}
+        className="flex-1 py-3 rounded-lg font-medium text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
       >
-        <ImagePlus className="w-3.5 h-3.5" />
-        Import different image
+        <Download className="w-4 h-4" />
+        Download SVG
+      </button>
+      <button
+        onClick={onRerun}
+        className="flex-1 py-3 rounded-lg font-medium text-sm bg-secondary text-foreground hover:bg-secondary/80 transition-all flex items-center justify-center gap-2"
+      >
+        <RotateCcw className="w-4 h-4" />
+        Re-run
       </button>
     </div>
   );
