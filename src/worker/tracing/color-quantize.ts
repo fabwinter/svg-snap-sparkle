@@ -193,6 +193,26 @@ function runQuantization(
     primaries.push(cluster.color);
     finalColors.push(cluster.color);
   }
+  // Backfill: if the blend-filter dropped colours, top up from remaining
+  // clusters (allowing blends) so the palette length matches the user request.
+  if (finalColors.length < maxColors) {
+    for (const cluster of clusters) {
+      if (finalColors.length >= maxColors) break;
+      if (finalColors.some(c => colorDistSq(c, cluster.color) < 4)) continue;
+      finalColors.push(cluster.color);
+    }
+  }
+  return { finalColors, opaqueCount };
+}
+
+// Legacy stub kept for diff stability — real return is above.
+function _unused_runQuantization_tail() {
+  const finalColors: [number, number, number][] = [];
+  for (const cluster of kept) {
+    if (isLinearBlend(cluster.color, primaries, 25)) continue;
+    primaries.push(cluster.color);
+    finalColors.push(cluster.color);
+  }
   return { finalColors, opaqueCount };
 }
 
