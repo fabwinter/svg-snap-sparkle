@@ -117,36 +117,64 @@ function erodeMidtonesIntoDarkest(
   darkestIdx: number,
   w: number,
   h: number,
-  passes: number = 3,
+  passes: number = 2,
 ): void {
   // Luminance values from extractColorLayers are in 0–255 range.
   const WHITE_LUM_THRESHOLD = 200;
-  const darkest = masks[darkestIdx];
   const total = w * h;
 
+  // Identify the lightest non-darkest mask (sink for fringe pixels that
+  // are closer to white than black). This prevents the darkest layer from
+  // ballooning when fringe rings are absorbed.
+  let lightestIdx = -1;
+  let lightestLum = -1;
+  for (let i = 0; i < masks.length; i++) {
+    if (i === darkestIdx) continue;
+    if (layerLuminances[i] > lightestLum) {
+      lightestLum = layerLuminances[i];
+      lightestIdx = i;
+    }
+  }
+
+  const darkest = masks[darkestIdx];
+  const lightest = lightestIdx >= 0 ? masks[lightestIdx] : null;
+  const darkLum = layerLuminances[darkestIdx];
+
   for (let pass = 0; pass < passes; pass++) {
-    // Snapshot of darkest at start of this pass so we erode by exactly
-    // one ring of pixels per pass (otherwise a single pass cascades).
     const darkestSnapshot = new Uint8Array(darkest);
+    const lightestSnapshot = lightest ? new Uint8Array(lightest) : null;
     let changed = false;
 
     for (let si = 0; si < masks.length; si++) {
-      if (si === darkestIdx) continue;
+      if (si === darkestIdx || si === lightestIdx) continue;
       if (layerLuminances[si] > WHITE_LUM_THRESHOLD) continue;
 
       const mask = masks[si];
+      // Assign this layer's pixel to whichever neighbour (dark vs light)
+      // is closer in luminance to the layer's own colour. Fringe pixels
+      // halfway between black and white (e.g. mid-grey halo) end up in
+      // whichever side is perceptually nearer, so the darkest layer is
+      // not artificially thickened.
+      const myLum = layerLuminances[si];
+      const distDark = Math.abs(myLum - darkLum);
+      const distLight = lightest ? Math.abs(myLum - lightestLum) : Infinity;
+      const assignToDark = distDark <= distLight;
+
       for (let p = 0; p < total; p++) {
         if (mask[p] !== 255) continue;
         const x = p % w;
         const y = Math.floor(p / w);
-        const hasBlackNeighbor =
-          (x > 0     && darkestSnapshot[p - 1] === 255) ||
-          (x < w - 1 && darkestSnapshot[p + 1] === 255) ||
-          (y > 0     && darkestSnapshot[p - w] === 255) ||
-          (y < h - 1 && darkestSnapshot[p + w] === 255);
-        if (hasBlackNeighbor) {
+
+        const target = assignToDark ? darkestSnapshot : lightestSnapshot!;
+        const sink = assignToDark ? darkest : lightest!;
+        const hasNeighbor =
+          (x > 0     && target[p - 1] === 255) ||
+          (x < w - 1 && target[p + 1] === 255) ||
+          (y > 0     && target[p - w] === 255) ||
+          (y < h - 1 && target[p + w] === 255);
+        if (hasNeighbor) {
           mask[p] = 0;
-          darkest[p] = 255;
+          sink[p] = 255;
           changed = true;
         }
       }
@@ -154,8 +182,6 @@ function erodeMidtonesIntoDarkest(
     if (!changed) break;
   }
 }
-
-function rgbToHex(r: number, g: number, b: number): string {
   return '#' +
     r.toString(16).padStart(2, '0') +
     g.toString(16).padStart(2, '0') +
