@@ -3,7 +3,9 @@
  *
  * Outline mode: composites onto white, applies hard luminance threshold to
  *               remove anti-alias ramp, then traces dark outlines → single-color SVG.
- * Color mode:   quantizes image into color layers, traces each layer separately.
+ * Color mode:   quantizes image into color layers, traces each layer separately
+ *               using ABUTTING exclusive masks + gap-filler trap strips so no
+ *               underlying colour bleeds through at region boundaries.
  */
 
 import type { TraceConfig } from '../../types/pipeline';
@@ -74,19 +76,47 @@ async function traceMask(
   return svg;
 }
 
-/** Dilate a binary mask by 1px (4-connected). */
+/** Dilate a binary mask by 1px (4-connected). Used only by gap-filler. */
 function dilateMask(mask: Uint8Array, w: number, h: number): Uint8Array {
   const out = new Uint8Array(mask);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (mask[y * w + x] !== 255) continue;
-      if (x > 0) out[y * w + x - 1] = 255;
+      if (x > 0)     out[y * w + x - 1] = 255;
       if (x < w - 1) out[y * w + x + 1] = 255;
-      if (y > 0) out[(y - 1) * w + x] = 255;
+      if (y > 0)     out[(y - 1) * w + x] = 255;
       if (y < h - 1) out[(y + 1) * w + x] = 255;
     }
   }
   return out;
+}
+
+/**
+ * Compute the 1-px boundary band between two abutting masks.
+ * Returns a mask covering pixels that are adjacent to both regions
+ * but belong to neither — i.e. the crack between them.
+ *
+ * These pixels are the exact locations where browser anti-aliasing
+ * would otherwise interpolate between a colour and the page background
+ * producing a visible halo. Filling them with an averaged colour
+ * (see buildGapFillLayers) ensures AA blends between two similar
+ * colours instead.
+ */
+function boundaryBand(
+  a: Uint8Array,
+  b: Uint8Array,
+  w: number,
+  h: number,
+): Uint8Array {
+  const da = dilateMask(a, w, h);
+  const db = dilateMask(b, w, h);
+  const band = new Uint8Array(a.length);
+  for (let p = 0; p < a.length; p++) {
+    if (da[p] === 255 && db[p] === 255 && !a[p] && !b[p]) {
+      band[p] = 255;
+    }
+  }
+  return band;
 }
 
 function rgbToHex(r: number, g: number, b: number): string {
@@ -184,11 +214,6 @@ export class PotraceTracer implements ITracer {
     const whiteComposite = compositeOnWhite(data, width, height);
 
     // Snap the anti-alias ramp at mask edges to pure white before tracing.
-    // The ramp (gray pixels that are lighter than the logo content but
-    // darker than pure white) would otherwise be traced by Potrace as a
-    // closed region, producing a colored fringe halo around the output.
-    // bwThreshold is the line-art slider (default 128 → maps to pixel
-    // luminance threshold 200 after composite).
     const pixelThreshold = config.bwThreshold !== undefined
       ? Math.round(128 + (config.bwThreshold - 128) * 0.57)
       : 200;
@@ -219,46 +244,116 @@ export class PotraceTracer implements ITracer {
       return this.traceOutline(data, width, height, config);
     }
 
+    // Sort lightest → darkest (back-to-front draw order).
     const luminance = (c: [number, number, number]) =>
       0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
     layers.sort((a, b) => luminance(b.color) - luminance(a.color));
 
     const skipBg = config.skipBackground && layers.length > 1;
     const firstTracedLayer = skipBg ? 1 : 0;
-
     const cutout = !!config.cutout;
+    const totalPixels = width * height;
 
-    const stackedMasks: Uint8Array[] = [];
-    for (let li = firstTracedLayer; li < layers.length; li++) {
-      if (cutout) {
-        stackedMasks.push(new Uint8Array(layers[li].mask));
-        continue;
+    // ─────────────────────────────────────────────────────────────────────
+    // STAGE 1 — ABUTTING EXCLUSIVE MASKS
+    //
+    // Iterate layers darkest-first (back-to-front in reverse), greedily
+    // assigning each pixel to the darkest (topmost) layer that claims it.
+    // Result: every pixel belongs to at most ONE layer — no colour can
+    // show through beneath another at a shared boundary.
+    //
+    // This is equivalent to Illustrator's "Abutting" image-trace method.
+    // ─────────────────────────────────────────────────────────────────────
+    const abuttingMasks: Uint8Array[] = new Array(layers.length - firstTracedLayer);
+
+    if (cutout) {
+      // In cutout mode keep original masks; no stacking needed.
+      for (let li = firstTracedLayer; li < layers.length; li++) {
+        abuttingMasks[li - firstTracedLayer] = new Uint8Array(layers[li].mask);
       }
-      const stacked = new Uint8Array(width * height);
-      for (let lj = li; lj < layers.length; lj++) {
-        const src = layers[lj].mask;
-        for (let p = 0; p < stacked.length; p++) {
-          if (src[p] === 255) stacked[p] = 255;
+    } else {
+      const covered = new Uint8Array(totalPixels);
+      // Iterate darkest → lightest so darker (foreground) layers win.
+      for (let li = layers.length - 1; li >= firstTracedLayer; li--) {
+        const srcMask = layers[li].mask;
+        const exclusive = new Uint8Array(totalPixels);
+        for (let p = 0; p < totalPixels; p++) {
+          if (srcMask[p] === 255 && !covered[p]) {
+            exclusive[p] = 255;
+            covered[p] = 1;
+          }
         }
+        abuttingMasks[li - firstTracedLayer] = exclusive;
       }
-      stackedMasks.push(stacked);
     }
 
-    const dilatePasses = cutout ? 0 : (config.pathOverlap ?? 3);
-    const topmostExtra = cutout ? 0 : (layers.length > 2 ? 1 : 0);
-    for (let si = 0; si < stackedMasks.length; si++) {
-      const passes = si < stackedMasks.length - 1 ? dilatePasses : topmostExtra;
-      let m = stackedMasks[si];
-      for (let p = 0; p < passes; p++) m = dilateMask(m, width, height);
-      stackedMasks[si] = m;
+    // ─────────────────────────────────────────────────────────────────────
+    // STAGE 2 — GAP-FILLER TRAP STRIPS  (Vectorizer.AI "Gap Filler")
+    //
+    // For each adjacent pair of colour layers compute the 1-px boundary
+    // band between their exclusive regions. Fill that band with the
+    // perceptual average of the two colours and draw it UNDERNEATH both
+    // layers. This ensures browser anti-aliasing at region edges blends
+    // between two similar colours instead of between a colour and the
+    // plain white page background — which is what produces the halo.
+    // ─────────────────────────────────────────────────────────────────────
+    const gapFillPaths: string[] = [];
+
+    if (!cutout) {
+      const tracedCount = layers.length - firstTracedLayer;
+      for (let si = 0; si < tracedCount - 1; si++) {
+        const layerA = layers[si + firstTracedLayer];
+        const layerB = layers[si + 1 + firstTracedLayer];
+        const maskA = abuttingMasks[si];
+        const maskB = abuttingMasks[si + 1];
+
+        const band = boundaryBand(maskA, maskB, width, height);
+
+        let bandHasPixels = false;
+        for (let p = 0; p < band.length; p++) {
+          if (band[p] === 255) { bandHasPixels = true; break; }
+        }
+        if (!bandHasPixels) continue;
+
+        // Normalise both colours before averaging so snapped white/black
+        // values are used rather than raw palette values.
+        const [arN, agN, abN] = normalizeExtremeColor(layerA.color[0], layerA.color[1], layerA.color[2]);
+        const [brN, bgN, bbN] = normalizeExtremeColor(layerB.color[0], layerB.color[1], layerB.color[2]);
+        const avgR = Math.round((arN + brN) / 2);
+        const avgG = Math.round((agN + bgN) / 2);
+        const avgB = Math.round((abN + bbN) / 2);
+        const avgHex = rgbToHex(avgR, avgG, avgB);
+
+        const bandSvg = await traceMask(band, width, height, config);
+        if (!bandSvg) continue;
+        const bandPaths = extractSvgPaths(bandSvg);
+        if (!bandPaths.trim()) continue;
+
+        const filled = bandPaths
+          .replace(/fill="(?:black|#000000|#000)"/gi, `fill="${avgHex}"`)
+          .replace(/<path(?![^>]*fill=)/g, `<path fill="${avgHex}" `);
+        gapFillPaths.push(filled);
+      }
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // STAGE 3 — TRACE & COMPOSITE
+    //
+    // Draw order: background rect (optional) → gap-filler strips → colour
+    // layers lightest-first (back-to-front).
+    // ─────────────────────────────────────────────────────────────────────
     const coloredPaths: string[] = [];
+
     if (skipBg) {
       const bgLayer = layers[0];
       const [bgR, bgG, bgB] = normalizeExtremeColor(bgLayer.color[0], bgLayer.color[1], bgLayer.color[2]);
       const bgHex = rgbToHex(bgR, bgG, bgB);
       coloredPaths.push(`<rect width="100%" height="100%" fill="${bgHex}"/>`);
+    }
+
+    // Insert gap-filler strips before colour layers.
+    for (const gf of gapFillPaths) {
+      coloredPaths.push(gf);
     }
 
     for (let li = firstTracedLayer; li < layers.length; li++) {
@@ -267,7 +362,7 @@ export class PotraceTracer implements ITracer {
       const hex = rgbToHex(nr, ng, nb);
       const si = li - firstTracedLayer;
 
-      const svg = await traceMask(stackedMasks[si], width, height, config);
+      const svg = await traceMask(abuttingMasks[si], width, height, config);
       if (!svg) continue;
       const paths = extractSvgPaths(svg);
       if (!paths.trim()) continue;
