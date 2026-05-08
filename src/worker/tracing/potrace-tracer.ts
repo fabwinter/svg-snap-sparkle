@@ -12,8 +12,8 @@
  *      immediately adjacent to the darkest layer (black outline) are
  *      transferred into the darkest layer. This collapses the 1px JPEG
  *      fringe band at the green/black boundary into the outline.
- *      Only mid-tone layers are eroded — the lightest layer (white/bg)
- *      is skipped to avoid swallowing interior regions.
+ *      Only layers with luminance <= 200 are candidates — near-white
+ *      layers are protected regardless of how many layers are present.
  *   2. UNIFORM 1PX DILATION — every exclusive mask is expanded by exactly
  *      1px to restore smooth edges stripped by abutting.
  */
@@ -98,34 +98,35 @@ function dilateMask(mask: Uint8Array, w: number, h: number): Uint8Array {
 }
 
 /**
- * Erode mid-tone layer fringe pixels into the darkest layer (1 pass).
+ * Erode mid-tone fringe pixels into the darkest layer (1 pass).
  *
- * Only erodes masks whose layer luminance is strictly between the lightest
- * and darkest layers. The lightest layer (white/background) is intentionally
- * skipped — eroding white into black would swallow interior white regions.
+ * For each non-darkest mask, any pixel 4-connected adjacent to the darkest
+ * layer is transferred into the darkest layer. This collapses the 1px JPEG
+ * fringe band at colour boundaries into the black outline.
  *
- * For each mid-tone mask pixel that is 4-connected adjacent to a darkest-
- * layer pixel, transfer it to the darkest layer. This collapses the 1px
- * JPEG fringe band at colour boundaries into the black outline.
+ * Layers with luminance > 200 (near-white) are skipped unconditionally —
+ * this protects white interior regions regardless of how many layers exist.
+ *
+ * The fixed luminance threshold (> 200) replaces the previous relative
+ * lightestIdx guard, which broke when skipBg=true left only 2 exclusive
+ * masks and lightestIdx=0 pointed at green rather than white.
  */
 function erodeMidtonesIntoDarkest(
   masks: Uint8Array[],
   layerLuminances: number[],
   darkestIdx: number,
-  lightestIdx: number,
   w: number,
   h: number,
 ): void {
+  // Luminance values from extractColorLayers are in 0–255 range.
+  const WHITE_LUM_THRESHOLD = 200;
   const darkest = masks[darkestIdx];
   const total = w * h;
+
   for (let si = 0; si < masks.length; si++) {
-    // Skip darkest itself and the lightest layer (white/bg)
-    if (si === darkestIdx || si === lightestIdx) continue;
-    // Only erode layers that are genuinely mid-tone
-    const lum = layerLuminances[si];
-    const darkLum = layerLuminances[darkestIdx];
-    const lightLum = layerLuminances[lightestIdx];
-    if (lum <= darkLum + 20 || lum >= lightLum - 20) continue;
+    if (si === darkestIdx) continue;
+    // Skip near-white layers — protecting white interior regions.
+    if (layerLuminances[si] > WHITE_LUM_THRESHOLD) continue;
 
     const mask = masks[si];
     for (let p = 0; p < total; p++) {
@@ -288,14 +289,14 @@ export class PotraceTracer implements ITracer {
     // ─────────────────────────────────────────────────────────────
     // STAGE 1.5: Boundary erosion — collapse mid-tone fringe into darkest.
     //
-    // Only mid-tone layers (e.g. green) are eroded into black.
-    // The lightest layer (white) is intentionally skipped to avoid
-    // collapsing white interior regions into the black outline.
+    // Fires whenever there are >= 2 exclusive masks (covers both the
+    // skipBg=true case with 2 masks and the skipBg=false case with 3+).
+    // Near-white layers (luminance > 200) are protected inside the fn.
     // ─────────────────────────────────────────────────────────────
-    if (!cutout && exclusiveMasks.length > 2) {
+    if (!cutout && exclusiveMasks.length >= 2) {
       const numLayers = layers.length - firstTracedLayer;
       const darkestIdx = numLayers - 1; // last after lightest→darkest sort
-      const lightestIdx = 0;            // first after sort
+      // layerLuminances are in 0–255 range to match WHITE_LUM_THRESHOLD
       const layerLuminances = layers
         .slice(firstTracedLayer)
         .map(l => luminance(l.color));
@@ -303,7 +304,6 @@ export class PotraceTracer implements ITracer {
         exclusiveMasks,
         layerLuminances,
         darkestIdx,
-        lightestIdx,
         width,
         height,
       );
