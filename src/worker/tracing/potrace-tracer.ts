@@ -117,7 +117,7 @@ function erodeMidtonesIntoDarkest(
   darkestIdx: number,
   w: number,
   h: number,
-  passes: number = 2,
+  passes: number = 4,
 ): void {
   // Luminance values from extractColorLayers are in 0–255 range.
   const WHITE_LUM_THRESHOLD = 200;
@@ -150,33 +150,45 @@ function erodeMidtonesIntoDarkest(
       if (layerLuminances[si] > WHITE_LUM_THRESHOLD) continue;
 
       const mask = masks[si];
-      // Assign this layer's pixel to whichever neighbour (dark vs light)
-      // is closer in luminance to the layer's own colour. Fringe pixels
-      // halfway between black and white (e.g. mid-grey halo) end up in
-      // whichever side is perceptually nearer, so the darkest layer is
-      // not artificially thickened.
       const myLum = layerLuminances[si];
       const distDark = Math.abs(myLum - darkLum);
       const distLight = lightest ? Math.abs(myLum - lightestLum) : Infinity;
-      const assignToDark = distDark <= distLight;
+      // Tie-break: when fringe is roughly halfway between dark and light,
+      // prefer the dark sink (typical for green/teal JPEG artifacts which
+      // visually read as part of the dark outline).
+      const preferDark = distDark <= distLight;
 
       for (let p = 0; p < total; p++) {
         if (mask[p] !== 255) continue;
         const x = p % w;
         const y = Math.floor(p / w);
 
-        const target = assignToDark ? darkestSnapshot : lightestSnapshot!;
-        const sink = assignToDark ? darkest : lightest!;
-        const hasNeighbor =
-          (x > 0     && target[p - 1] === 255) ||
-          (x < w - 1 && target[p + 1] === 255) ||
-          (y > 0     && target[p - w] === 255) ||
-          (y < h - 1 && target[p + w] === 255);
-        if (hasNeighbor) {
-          mask[p] = 0;
-          sink[p] = 255;
-          changed = true;
-        }
+        const touchesDark =
+          (x > 0     && darkestSnapshot[p - 1] === 255) ||
+          (x < w - 1 && darkestSnapshot[p + 1] === 255) ||
+          (y > 0     && darkestSnapshot[p - w] === 255) ||
+          (y < h - 1 && darkestSnapshot[p + w] === 255);
+
+        const touchesLight = lightestSnapshot ? (
+          (x > 0     && lightestSnapshot[p - 1] === 255) ||
+          (x < w - 1 && lightestSnapshot[p + 1] === 255) ||
+          (y > 0     && lightestSnapshot[p - w] === 255) ||
+          (y < h - 1 && lightestSnapshot[p + w] === 255)
+        ) : false;
+
+        if (!touchesDark && !touchesLight) continue;
+
+        // Pick sink: if only one extreme is adjacent, go there. If both,
+        // use the perceptually closer one (preferDark on ties).
+        let toDark: boolean;
+        if (touchesDark && !touchesLight) toDark = true;
+        else if (touchesLight && !touchesDark) toDark = false;
+        else toDark = preferDark;
+
+        mask[p] = 0;
+        if (toDark) darkest[p] = 255;
+        else lightest![p] = 255;
+        changed = true;
       }
     }
     if (!changed) break;
