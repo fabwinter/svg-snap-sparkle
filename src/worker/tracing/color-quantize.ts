@@ -61,18 +61,53 @@ function isLinearBlend(
 }
 
 /**
- * Assign a pixel to its nearest palette color, with a lightness-mismatch
- * penalty to prevent JPEG fringe artifacts.
+ * Assign a pixel to its nearest palette color.
+ *
+ * Fringe-pixel suppression: anti-alias pixels at colour boundaries are
+ * typically a washed-out blend of two adjacent colours (e.g. pale green
+ * at a white/black edge). We detect these by checking:
+ *   - low chroma  (pixel is desaturated / muted)
+ *   - colour sits close to a blend of two palette primaries
+ * When both conditions are true the pixel is forced to the luminance-
+ * nearest palette entry rather than being assigned to a mid-tone cluster.
+ * This prevents fringe pixels from forming their own separate SVG layer.
+ *
+ * A lightness-gap penalty is also applied: if a pixel is much lighter
+ * than a saturated palette colour it is strongly discouraged from
+ * being assigned to that colour.
  */
 function findNearestColor(
   r: number, g: number, b: number,
   colors: [number, number, number][],
 ): number {
   const pixelL = (Math.max(r, g, b) + Math.min(r, g, b)) / (2 * 255);
+  const pixelChroma = Math.max(r, g, b) - Math.min(r, g, b);
 
   const COLOR_CHROMA_MIN = 30;
   const LIGHTNESS_GAP_MIN = 0.35;
   const CHROMA_PENALTY = 8;
+  // Pixel is considered a fringe blend if its chroma is below this threshold
+  const FRINGE_CHROMA_MAX = 40;
+  // Blend tolerance for isLinearBlend fringe check
+  const BLEND_TOL = 40;
+
+  // If this pixel looks like an anti-alias blend between two palette colours
+  // (low chroma, close to a linear mix), force it to the luminance-nearest
+  // palette entry so it doesn't create a separate fringe cluster.
+  if (pixelChroma < FRINGE_CHROMA_MAX && colors.length >= 2) {
+    if (isLinearBlend([r, g, b], colors, BLEND_TOL)) {
+      // Find luminance-nearest palette colour
+      let bestIdx = 0;
+      let bestLDiff = Infinity;
+      for (let i = 0; i < colors.length; i++) {
+        const cr = colors[i][0], cg = colors[i][1], cb = colors[i][2];
+        const colorL = (Math.max(cr, cg, cb) + Math.min(cr, cg, cb)) / (2 * 255);
+        const lDiff = Math.abs(pixelL - colorL);
+        if (lDiff < bestLDiff) { bestLDiff = lDiff; bestIdx = i; }
+      }
+      return bestIdx;
+    }
+  }
 
   let bestIdx = 0;
   let bestDist = Infinity;
@@ -145,9 +180,6 @@ function runQuantization(
       count: b.count,
     }));
 
-  // Tightened from 40→28: collapses fringe micro-clusters that are
-  // perceptually close to a dominant color, while keeping legitimately
-  // distinct colors (e.g. Starbucks green vs black) from merging.
   const MERGE_DIST_SQ = 28 * 28 * 3;
   let merged = true;
   while (merged) {
@@ -174,10 +206,9 @@ function runQuantization(
 
   clusters.sort((a, b) => b.count - a.count);
 
-  // Raised from 18→30: catches washed-out green/teal fringe clusters
-  // (chroma ~20–25) that previously slipped through and formed a separate
-  // coloured SVG layer around the logo edge.
-  const CHROMA_SNAP = 30;
+  // Snap low-chroma clusters to neutral gray — catches washed-out fringe
+  // colours that survived merging.
+  const CHROMA_SNAP = 35;
   for (const c of clusters) {
     const [r, g, b] = c.color;
     const chroma = Math.max(r, g, b) - Math.min(r, g, b);
@@ -192,7 +223,8 @@ function runQuantization(
   const primaries: [number, number, number][] = [];
   const finalColors: [number, number, number][] = [];
   for (const cluster of kept) {
-    if (isLinearBlend(cluster.color, primaries, 25)) continue;
+    // Raised blend-tol 25→40 to absorb more fringe blend clusters
+    if (isLinearBlend(cluster.color, primaries, 40)) continue;
     primaries.push(cluster.color);
     finalColors.push(cluster.color);
   }
