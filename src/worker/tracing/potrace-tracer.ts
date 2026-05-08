@@ -5,15 +5,14 @@
  *               remove anti-alias ramp, then traces dark outlines → single-color SVG.
  * Color mode:   quantizes image into color layers, traces each layer separately.
  *
- * Color layering strategy (fixes green fringe + jagged edges):
+ * Color layering strategy:
  *   1. ABUTTING EXCLUSIVE MASKS — each pixel is assigned to exactly one
- *      colour layer (darkest layer wins). No layer can bleed through beneath
- *      another at a shared boundary.
+ *      colour layer (darkest layer wins).
+ *   1.5 BOUNDARY EROSION — JPEG fringe pixels at the border between a
+ *      lighter layer and the darkest layer are given to the darkest layer.
+ *      This collapses the 2-3px opaque fringe band into the black outline.
  *   2. UNIFORM 1PX DILATION — every exclusive mask is expanded by exactly
- *      1px after partitioning. The expansion only ever fills background
- *      pixels (all foreground pixels are already claimed by `covered`), so
- *      it restores smooth anti-aliased edges without re-introducing overlap
- *      between adjacent colour layers.
+ *      1px to restore smooth edges stripped by abutting.
  */
 
 import type { TraceConfig } from '../../types/pipeline';
@@ -93,6 +92,46 @@ function dilateMask(mask: Uint8Array, w: number, h: number): Uint8Array {
     }
   }
   return out;
+}
+
+/**
+ * Erode fringe pixels from lighter masks into the darkest mask.
+ *
+ * Any pixel in a lighter exclusive mask that is 4-connected adjacent to
+ * a pixel in `darkestMask` is transferred to `darkestMask`. This collapses
+ * the 2-3px JPEG-compressed fringe band (opaque green pixels at the
+ * black/green boundary) into the black outline layer where it belongs.
+ *
+ * The erosion runs for `passes` iterations to handle wider fringe bands.
+ */
+function erodeIntodarkest(
+  masks: Uint8Array[],
+  darkestIdx: number,
+  w: number,
+  h: number,
+  passes: number = 2,
+): void {
+  const darkest = masks[darkestIdx];
+  for (let pass = 0; pass < passes; pass++) {
+    for (let si = 0; si < masks.length; si++) {
+      if (si === darkestIdx) continue;
+      const mask = masks[si];
+      for (let p = 0; p < w * h; p++) {
+        if (mask[p] !== 255) continue;
+        const x = p % w;
+        const y = Math.floor(p / w);
+        const hasBlackNeighbor =
+          (x > 0     && darkest[p - 1] === 255) ||
+          (x < w - 1 && darkest[p + 1] === 255) ||
+          (y > 0     && darkest[p - w] === 255) ||
+          (y < h - 1 && darkest[p + w] === 255);
+        if (hasBlackNeighbor) {
+          mask[p] = 0;
+          darkest[p] = 255;
+        }
+      }
+    }
+  }
 }
 
 function rgbToHex(r: number, g: number, b: number): string {
@@ -233,6 +272,23 @@ export class PotraceTracer implements ITracer {
         }
         exclusiveMasks[li - firstTracedLayer] = exclusive;
       }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STAGE 1.5: Boundary erosion — collapse fringe into darkest layer.
+    //
+    // JPEG compression produces a 2-3px band of fully-opaque fringe pixels
+    // at hard colour boundaries (e.g. green pixels immediately adjacent to
+    // the black outline). These pixels legitimately quantize into the green
+    // cluster but visually belong to the black outline edge.
+    //
+    // Solution: transfer any lighter-layer pixel that is 4-connected
+    // adjacent to the darkest-layer mask into the darkest layer. Two passes
+    // handles typical 2px JPEG fringe width.
+    // ─────────────────────────────────────────────────────────────
+    if (!cutout && exclusiveMasks.length > 1) {
+      const darkestIdx = exclusiveMasks.length - 1; // darkest = last after sort
+      erodeIntodarkest(exclusiveMasks, darkestIdx, width, height, 2);
     }
 
     // ─────────────────────────────────────────────────────────────
