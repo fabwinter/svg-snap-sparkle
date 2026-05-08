@@ -335,16 +335,36 @@ export class PotraceTracer implements ITracer {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // STAGE 1.5: Boundary erosion — collapse mid-tone fringe into darkest.
+    // STAGE 1.5: Optional dilation of non-darkest layers.
     //
-    // Fires whenever there are >= 2 exclusive masks (covers both the
-    // skipBg=true case with 2 masks and the skipBg=false case with 3+).
+    // Controlled by config.pathOverlap (passes). pathOverlap=0 means
+    // NO dilation — required for logo-style artwork where any expansion
+    // bleeds mid-tone colour past dark outlines and creates fringe specks
+    // at concave corners. The darkest layer is never dilated since
+    // erosion (stage 1.6) already pulls fringe pixels into it.
+    // ─────────────────────────────────────────────────────────────
+    if (!cutout) {
+      const dilationPasses = Math.max(0, config.pathOverlap ?? 0);
+      const darkestIdxForDilation =
+        exclusiveMasks.length >= 2 ? exclusiveMasks.length - 1 : -1;
+      for (let pass = 0; pass < dilationPasses; pass++) {
+        for (let si = 0; si < exclusiveMasks.length; si++) {
+          if (si === darkestIdxForDilation) continue;
+          exclusiveMasks[si] = dilateMask(exclusiveMasks[si], width, height);
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STAGE 1.6: Boundary erosion — absorb fringe band into darkest.
+    //
+    // Runs AFTER dilation so any dilated mid-tone pixels that landed
+    // in the fringe band get pulled into the dark outline.
     // Near-white layers (luminance > 200) are protected inside the fn.
     // ─────────────────────────────────────────────────────────────
     if (!cutout && exclusiveMasks.length >= 2) {
       const numLayers = layers.length - firstTracedLayer;
       const darkestIdx = numLayers - 1; // last after lightest→darkest sort
-      // layerLuminances are in 0–255 range to match WHITE_LUM_THRESHOLD
       const layerLuminances = layers
         .slice(firstTracedLayer)
         .map(l => luminance(l.color));
@@ -355,22 +375,6 @@ export class PotraceTracer implements ITracer {
         width,
         height,
       );
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // STAGE 2: Uniform 1px dilation of every exclusive mask.
-    //
-    // Skip the darkest layer when boundary erosion has run — it has
-    // already absorbed the fringe ring, so further dilation would
-    // visibly thicken outlines beyond the original artwork.
-    // ─────────────────────────────────────────────────────────────
-    if (!cutout) {
-      const darkestIdxForDilation =
-        exclusiveMasks.length >= 2 ? exclusiveMasks.length - 1 : -1;
-      for (let si = 0; si < exclusiveMasks.length; si++) {
-        if (si === darkestIdxForDilation) continue;
-        exclusiveMasks[si] = dilateMask(exclusiveMasks[si], width, height);
-      }
     }
 
     // ─────────────────────────────────────────────────────────────
