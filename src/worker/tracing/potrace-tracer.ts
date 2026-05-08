@@ -117,46 +117,29 @@ function erodeMidtonesIntoDarkest(
   darkestIdx: number,
   w: number,
   h: number,
-  passes: number = 4,
+  passes: number = 1,
 ): void {
   // Luminance values from extractColorLayers are in 0–255 range.
   const WHITE_LUM_THRESHOLD = 200;
   const total = w * h;
-
-  // Identify the lightest non-darkest mask (sink for fringe pixels that
-  // are closer to white than black). This prevents the darkest layer from
-  // ballooning when fringe rings are absorbed.
-  let lightestIdx = -1;
-  let lightestLum = -1;
-  for (let i = 0; i < masks.length; i++) {
-    if (i === darkestIdx) continue;
-    if (layerLuminances[i] > lightestLum) {
-      lightestLum = layerLuminances[i];
-      lightestIdx = i;
-    }
-  }
-
   const darkest = masks[darkestIdx];
-  const lightest = lightestIdx >= 0 ? masks[lightestIdx] : null;
-  const darkLum = layerLuminances[darkestIdx];
 
+  // Only absorb fringe pixels that are perceptually MUCH closer to the
+  // darkest layer than to their own colour. This prevents mid-tone layers
+  // (e.g. green) from being thinned into pure colour, while still pulling
+  // in the JPEG fringe band along dark/colour boundaries.
+  // Single pass keeps the dark outline at its original visual thickness;
+  // additional passes were thickening text and consuming small features
+  // like the ® registration mark.
   for (let pass = 0; pass < passes; pass++) {
     const darkestSnapshot = new Uint8Array(darkest);
-    const lightestSnapshot = lightest ? new Uint8Array(lightest) : null;
     let changed = false;
 
     for (let si = 0; si < masks.length; si++) {
-      if (si === darkestIdx || si === lightestIdx) continue;
+      if (si === darkestIdx) continue;
       if (layerLuminances[si] > WHITE_LUM_THRESHOLD) continue;
 
       const mask = masks[si];
-      const myLum = layerLuminances[si];
-      const distDark = Math.abs(myLum - darkLum);
-      const distLight = lightest ? Math.abs(myLum - lightestLum) : Infinity;
-      // Tie-break: when fringe is roughly halfway between dark and light,
-      // prefer the dark sink (typical for green/teal JPEG artifacts which
-      // visually read as part of the dark outline).
-      const preferDark = distDark <= distLight;
 
       for (let p = 0; p < total; p++) {
         if (mask[p] !== 255) continue;
@@ -169,25 +152,10 @@ function erodeMidtonesIntoDarkest(
           (y > 0     && darkestSnapshot[p - w] === 255) ||
           (y < h - 1 && darkestSnapshot[p + w] === 255);
 
-        const touchesLight = lightestSnapshot ? (
-          (x > 0     && lightestSnapshot[p - 1] === 255) ||
-          (x < w - 1 && lightestSnapshot[p + 1] === 255) ||
-          (y > 0     && lightestSnapshot[p - w] === 255) ||
-          (y < h - 1 && lightestSnapshot[p + w] === 255)
-        ) : false;
-
-        if (!touchesDark && !touchesLight) continue;
-
-        // Pick sink: if only one extreme is adjacent, go there. If both,
-        // use the perceptually closer one (preferDark on ties).
-        let toDark: boolean;
-        if (touchesDark && !touchesLight) toDark = true;
-        else if (touchesLight && !touchesDark) toDark = false;
-        else toDark = preferDark;
+        if (!touchesDark) continue;
 
         mask[p] = 0;
-        if (toDark) darkest[p] = 255;
-        else lightest![p] = 255;
+        darkest[p] = 255;
         changed = true;
       }
     }
