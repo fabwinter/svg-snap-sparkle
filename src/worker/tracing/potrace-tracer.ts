@@ -8,9 +8,12 @@
  * Color layering strategy:
  *   1. ABUTTING EXCLUSIVE MASKS — each pixel is assigned to exactly one
  *      colour layer (darkest layer wins).
- *   1.5 BOUNDARY EROSION — JPEG fringe pixels at the border between a
- *      lighter layer and the darkest layer are given to the darkest layer.
- *      This collapses the 2-3px opaque fringe band into the black outline.
+ *   1.5 BOUNDARY EROSION — mid-tone layer pixels (e.g. green) that are
+ *      immediately adjacent to the darkest layer (black outline) are
+ *      transferred into the darkest layer. This collapses the 1px JPEG
+ *      fringe band at the green/black boundary into the outline.
+ *      Only mid-tone layers are eroded — the lightest layer (white/bg)
+ *      is skipped to avoid swallowing interior regions.
  *   2. UNIFORM 1PX DILATION — every exclusive mask is expanded by exactly
  *      1px to restore smooth edges stripped by abutting.
  */
@@ -95,40 +98,48 @@ function dilateMask(mask: Uint8Array, w: number, h: number): Uint8Array {
 }
 
 /**
- * Erode fringe pixels from lighter masks into the darkest mask.
+ * Erode mid-tone layer fringe pixels into the darkest layer (1 pass).
  *
- * Any pixel in a lighter exclusive mask that is 4-connected adjacent to
- * a pixel in `darkestMask` is transferred to `darkestMask`. This collapses
- * the 2-3px JPEG-compressed fringe band (opaque green pixels at the
- * black/green boundary) into the black outline layer where it belongs.
+ * Only erodes masks whose layer luminance is strictly between the lightest
+ * and darkest layers. The lightest layer (white/background) is intentionally
+ * skipped — eroding white into black would swallow interior white regions.
  *
- * The erosion runs for `passes` iterations to handle wider fringe bands.
+ * For each mid-tone mask pixel that is 4-connected adjacent to a darkest-
+ * layer pixel, transfer it to the darkest layer. This collapses the 1px
+ * JPEG fringe band at colour boundaries into the black outline.
  */
-function erodeIntodarkest(
+function erodeMidtonesIntoDarkest(
   masks: Uint8Array[],
+  layerLuminances: number[],
   darkestIdx: number,
+  lightestIdx: number,
   w: number,
   h: number,
-  passes: number = 2,
 ): void {
   const darkest = masks[darkestIdx];
-  for (let pass = 0; pass < passes; pass++) {
-    for (let si = 0; si < masks.length; si++) {
-      if (si === darkestIdx) continue;
-      const mask = masks[si];
-      for (let p = 0; p < w * h; p++) {
-        if (mask[p] !== 255) continue;
-        const x = p % w;
-        const y = Math.floor(p / w);
-        const hasBlackNeighbor =
-          (x > 0     && darkest[p - 1] === 255) ||
-          (x < w - 1 && darkest[p + 1] === 255) ||
-          (y > 0     && darkest[p - w] === 255) ||
-          (y < h - 1 && darkest[p + w] === 255);
-        if (hasBlackNeighbor) {
-          mask[p] = 0;
-          darkest[p] = 255;
-        }
+  const total = w * h;
+  for (let si = 0; si < masks.length; si++) {
+    // Skip darkest itself and the lightest layer (white/bg)
+    if (si === darkestIdx || si === lightestIdx) continue;
+    // Only erode layers that are genuinely mid-tone
+    const lum = layerLuminances[si];
+    const darkLum = layerLuminances[darkestIdx];
+    const lightLum = layerLuminances[lightestIdx];
+    if (lum <= darkLum + 20 || lum >= lightLum - 20) continue;
+
+    const mask = masks[si];
+    for (let p = 0; p < total; p++) {
+      if (mask[p] !== 255) continue;
+      const x = p % w;
+      const y = Math.floor(p / w);
+      const hasBlackNeighbor =
+        (x > 0     && darkest[p - 1] === 255) ||
+        (x < w - 1 && darkest[p + 1] === 255) ||
+        (y > 0     && darkest[p - w] === 255) ||
+        (y < h - 1 && darkest[p + w] === 255);
+      if (hasBlackNeighbor) {
+        mask[p] = 0;
+        darkest[p] = 255;
       }
     }
   }
@@ -275,30 +286,31 @@ export class PotraceTracer implements ITracer {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // STAGE 1.5: Boundary erosion — collapse fringe into darkest layer.
+    // STAGE 1.5: Boundary erosion — collapse mid-tone fringe into darkest.
     //
-    // JPEG compression produces a 2-3px band of fully-opaque fringe pixels
-    // at hard colour boundaries (e.g. green pixels immediately adjacent to
-    // the black outline). These pixels legitimately quantize into the green
-    // cluster but visually belong to the black outline edge.
-    //
-    // Solution: transfer any lighter-layer pixel that is 4-connected
-    // adjacent to the darkest-layer mask into the darkest layer. Two passes
-    // handles typical 2px JPEG fringe width.
+    // Only mid-tone layers (e.g. green) are eroded into black.
+    // The lightest layer (white) is intentionally skipped to avoid
+    // collapsing white interior regions into the black outline.
     // ─────────────────────────────────────────────────────────────
-    if (!cutout && exclusiveMasks.length > 1) {
-      const darkestIdx = exclusiveMasks.length - 1; // darkest = last after sort
-      erodeIntodarkest(exclusiveMasks, darkestIdx, width, height, 2);
+    if (!cutout && exclusiveMasks.length > 2) {
+      const numLayers = layers.length - firstTracedLayer;
+      const darkestIdx = numLayers - 1; // last after lightest→darkest sort
+      const lightestIdx = 0;            // first after sort
+      const layerLuminances = layers
+        .slice(firstTracedLayer)
+        .map(l => luminance(l.color));
+      erodeMidtonesIntoDarkest(
+        exclusiveMasks,
+        layerLuminances,
+        darkestIdx,
+        lightestIdx,
+        width,
+        height,
+      );
     }
 
     // ─────────────────────────────────────────────────────────────
     // STAGE 2: Uniform 1px dilation of every exclusive mask.
-    //
-    // Abutting removes anti-alias edge pixels from each layer (they were
-    // previously shared). A single dilation pass restores smooth coverage
-    // without re-introducing colour overlap between layers, because the
-    // expanded pixels only ever land in unclaimed background space — all
-    // inter-layer boundaries are already covered by `covered`.
     // ─────────────────────────────────────────────────────────────
     if (!cutout) {
       for (let si = 0; si < exclusiveMasks.length; si++) {
