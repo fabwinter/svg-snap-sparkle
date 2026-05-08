@@ -348,9 +348,16 @@ export class PotraceTracer implements ITracer {
 
     // ─────────────────────────────────────────────────────────────
     // STAGE 2: Uniform 1px dilation of every exclusive mask.
+    //
+    // Skip the darkest layer when boundary erosion has run — it has
+    // already absorbed the fringe ring, so further dilation would
+    // visibly thicken outlines beyond the original artwork.
     // ─────────────────────────────────────────────────────────────
     if (!cutout) {
+      const darkestIdxForDilation =
+        exclusiveMasks.length >= 2 ? exclusiveMasks.length - 1 : -1;
       for (let si = 0; si < exclusiveMasks.length; si++) {
+        if (si === darkestIdxForDilation) continue;
         exclusiveMasks[si] = dilateMask(exclusiveMasks[si], width, height);
       }
     }
