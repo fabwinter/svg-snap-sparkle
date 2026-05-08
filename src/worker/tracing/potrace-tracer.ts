@@ -117,32 +117,41 @@ function erodeMidtonesIntoDarkest(
   darkestIdx: number,
   w: number,
   h: number,
+  passes: number = 3,
 ): void {
   // Luminance values from extractColorLayers are in 0–255 range.
   const WHITE_LUM_THRESHOLD = 200;
   const darkest = masks[darkestIdx];
   const total = w * h;
 
-  for (let si = 0; si < masks.length; si++) {
-    if (si === darkestIdx) continue;
-    // Skip near-white layers — protecting white interior regions.
-    if (layerLuminances[si] > WHITE_LUM_THRESHOLD) continue;
+  for (let pass = 0; pass < passes; pass++) {
+    // Snapshot of darkest at start of this pass so we erode by exactly
+    // one ring of pixels per pass (otherwise a single pass cascades).
+    const darkestSnapshot = new Uint8Array(darkest);
+    let changed = false;
 
-    const mask = masks[si];
-    for (let p = 0; p < total; p++) {
-      if (mask[p] !== 255) continue;
-      const x = p % w;
-      const y = Math.floor(p / w);
-      const hasBlackNeighbor =
-        (x > 0     && darkest[p - 1] === 255) ||
-        (x < w - 1 && darkest[p + 1] === 255) ||
-        (y > 0     && darkest[p - w] === 255) ||
-        (y < h - 1 && darkest[p + w] === 255);
-      if (hasBlackNeighbor) {
-        mask[p] = 0;
-        darkest[p] = 255;
+    for (let si = 0; si < masks.length; si++) {
+      if (si === darkestIdx) continue;
+      if (layerLuminances[si] > WHITE_LUM_THRESHOLD) continue;
+
+      const mask = masks[si];
+      for (let p = 0; p < total; p++) {
+        if (mask[p] !== 255) continue;
+        const x = p % w;
+        const y = Math.floor(p / w);
+        const hasBlackNeighbor =
+          (x > 0     && darkestSnapshot[p - 1] === 255) ||
+          (x < w - 1 && darkestSnapshot[p + 1] === 255) ||
+          (y > 0     && darkestSnapshot[p - w] === 255) ||
+          (y < h - 1 && darkestSnapshot[p + w] === 255);
+        if (hasBlackNeighbor) {
+          mask[p] = 0;
+          darkest[p] = 255;
+          changed = true;
+        }
       }
     }
+    if (!changed) break;
   }
 }
 
