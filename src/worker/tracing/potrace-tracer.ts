@@ -117,22 +117,35 @@ function erodeMidtonesIntoDarkest(
   darkestIdx: number,
   w: number,
   h: number,
-  passes: number = 1,
+  passes: number = 3,
 ): void {
   // Luminance values from extractColorLayers are in 0–255 range.
   const WHITE_LUM_THRESHOLD = 200;
   const total = w * h;
   const darkest = masks[darkestIdx];
 
-  // Only absorb fringe pixels that are perceptually MUCH closer to the
-  // darkest layer than to their own colour. This prevents mid-tone layers
-  // (e.g. green) from being thinned into pure colour, while still pulling
-  // in the JPEG fringe band along dark/colour boundaries.
-  // Single pass keeps the dark outline at its original visual thickness;
-  // additional passes were thickening text and consuming small features
-  // like the ® registration mark.
+  // Identify lightest mask (proxy for "white" / background side of fringe).
+  let lightestIdx = -1;
+  let lightestLum = -1;
+  for (let i = 0; i < masks.length; i++) {
+    if (i === darkestIdx) continue;
+    if (layerLuminances[i] > lightestLum) {
+      lightestLum = layerLuminances[i];
+      lightestIdx = i;
+    }
+  }
+
+  // A mid-tone pixel is absorbed into the darkest layer ONLY if it sits
+  // in a true fringe band — i.e. it touches the darkest layer (4-conn)
+  // AND a lightest-layer pixel exists within FRINGE_RADIUS (Chebyshev box).
+  // Bulk colour regions fail the second test and are preserved at full
+  // saturation. Thin features that don't border the dark layer at all
+  // (e.g. ® mark on white) are also preserved.
+  const FRINGE_RADIUS = 3;
+
   for (let pass = 0; pass < passes; pass++) {
     const darkestSnapshot = new Uint8Array(darkest);
+    const lightestSnapshot = lightestIdx >= 0 ? new Uint8Array(masks[lightestIdx]) : null;
     let changed = false;
 
     for (let si = 0; si < masks.length; si++) {
@@ -153,6 +166,24 @@ function erodeMidtonesIntoDarkest(
           (y < h - 1 && darkestSnapshot[p + w] === 255);
 
         if (!touchesDark) continue;
+
+        // Look for a lightest-layer pixel within FRINGE_RADIUS.
+        let nearLight = false;
+        if (lightestSnapshot) {
+          const x0 = Math.max(0, x - FRINGE_RADIUS);
+          const x1 = Math.min(w - 1, x + FRINGE_RADIUS);
+          const y0 = Math.max(0, y - FRINGE_RADIUS);
+          const y1 = Math.min(h - 1, y + FRINGE_RADIUS);
+          outer:
+          for (let yy = y0; yy <= y1; yy++) {
+            const row = yy * w;
+            for (let xx = x0; xx <= x1; xx++) {
+              if (lightestSnapshot[row + xx] === 255) { nearLight = true; break outer; }
+            }
+          }
+        }
+
+        if (!nearLight) continue;
 
         mask[p] = 0;
         darkest[p] = 255;
